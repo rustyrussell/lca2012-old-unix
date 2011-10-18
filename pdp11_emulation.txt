@@ -1,0 +1,54 @@
+PDP/11 emulation:
+
+-------------------------------------------------------------------------------
+- apout
+  "Userland" emulator; interprets PDP/11 instructions & maps syscalls, runs
+  binaries (NOT OS) on Linux.
+
+-------------------------------------------------------------------------------
+- p11
+  I tried 2.10i, found it doc-free & a little buggy.  Got V6 booting, not
+  V7 nor BSD2.11
+
+  Console: telnet localhost 10000
+
+Attach disc image:
+
+@I rl
+rl >l 0 /tmp/pdp11_v7
+rl0: loaded
+@173000g
+
+BOOT rom runs on telnet.
+
+Copyright (c) 1998-2000 Begemot Computer Associates. All rights reserved.
+boot>BOOT RL
+
+For V6, type 'unix' at @
+For V7, type 'boot', then 
+    New Boot, known devices are hp ht rk rl rp tm vt
+    : 
+..type rl(0,0)rl2unix
+
+For BSD, type 'boot', then..
+xp(0,0,0)unix ?
+nope...
+
+v6 disc boots, v7 doesn't, BSD ones don't
+
+Commands to attach disc images (in terminal, not telnet console):
+Irl
+l 0 /tmp/211bsd.boot
+l 1 /tmp/211bsd.vol1
+l 2 /tmp/211bsd.vol2
+l 3 /tmp/211bsd.vol3
+
+Irp
+l 0 /tmp/211bsd.vol4
+l 1 /tmp/211bsd.vol5
+l 2 /tmp/211bsd.vol6
+l 3 /tmp/211bsd.vol7
+l 4 /tmp/211bsd.vol8
+l 5 /tmp/211bsd.vol9
+
+Very little works; I think p11 is broken, discs especially.
