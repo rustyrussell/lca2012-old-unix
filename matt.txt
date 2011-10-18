@@ -1,0 +1,97 @@
+Matt's notes.  Staging area for readying into real plan (TM).
+-------------------------------------------------------------------------------
+
+Things to investigate:
+
+-       Can I compile the world with busybox?  Dietlibc?  Can I make a usable
+        linux "distro" this way?  Can I use this for a week or two without going
+        bonkers?
+
+-	asmutils! http://asm.sourceforge.net//asmutils.html
+	ls is x86-only and 1018 bytes.
+
+-	Sourcecode comparisons (size, functionality)
+	   - Orig unix
+	   - Linux coreutils/busybox
+	   - NetBSD?  Fairly "old/original" and minimal?
+	   - Minix?
+
+	   ls, cat, wc, find, cksum
+
+-	Argument of "Internationalisation"
+
+-	Argument of "Portability" -- asmutils clearly fails this one, but does 
+	busybox compile on BSD?  On Solaris?
+
+- 	My x86 Ubuntu /bin/ls is 105K (97K text, 3K BSS, 1K rodata and the rest
+	ELF guff).
+	Use Valgrind -- how much of its 105K is actually ever accessed for the
+	common cases* of "ls" and "ls -l"?
+
+	Could augment PDP11 emul to do the same [done now]; have a "value" metric to
+	compare how much of the binaries are used on each platform?
+
+	(Build argument/investigation here illustrating "what the binary could
+	do" versus "what you use it for 99% of the time".)
+
+	*: Define "common cases"; useful switches, subjective "non-obscure" stuff,
+	common error paths.
+
+- 	I keep finding obscure features in common binaries.  How much does this cost?
+         (This and the above come back to busybox, which does only the bare
+         minimum. I may well be happy with just that, as I don't use most odd
+         features.)
+
+-	retrobsd:
+	Port of 2BSD to PIC32 (MIPS32) microcontrollers!  Good, as v. close to
+	Olden Unix and easily buildable/emulatable on Linux!  Build statically links
+	binaries to ELF, then elf2aouts them.  Binaries are surprisingly large
+	given the simple source!  (I think suffers from libc too.) E.g. 'cat' source
+	is v.v.v.simple, (c) Regents 1980, 217 lines, and:
+	   text    data     bss     dec     hex filename
+	  19832     744     208   20784    5130 cat.elf
+
+Random stats:
+
+-       Diet libc helloworld is 2K.  Glibc (x86 Ubuntu) version is 7K.
+
+- 	x86 busybox static = 1269432 (which libc?)  x86 busybox dynamic w/ glibc =
+	687260 x86 busybox + dietlibc .. nontrivial to compile. might be interesting
+	though.
+
+-   	Extreme test: "int main(void) { return 42; }"  Two x86 instructions.
+	7K as shared ELF, 5.5K stripped.  ~1.2K in LOAD sections, rest things
+	like dynamic linky tables/symbols, etc.
+	500K as static ELF (!!! I don't call any fns!  (But preamble to main()
+	does on my behalf.)
+	
+	The .o (unlinked) is 670 bytes;	ELF header is 0x34 bytes, text 10 bytes,
+	.comment 0x24 bytes. Then, 572 bytes of crap: what is this?  DWARF stuff
+	perhaps?
+	
+	Is there a --strip-unused-functions linker flag that could be used
+	to prune down the 500K static size? (It SHOULD ALREADY do this!!  I
+	made a test .a with three .o, two dependent, and linked against this
+	with a simple main().  When calling the independent function, the other
+	.o files were stripped away!)
+
+Performance:
+-	Statically link bash
+	- diet libc
+	- normal libc
+	Test invocation time (x 10000); should be faster w/o dynlinking
+
+-	Openoffice is a good example of something that does a huge amount
+	of PLT fixup -- esp. if we LD_BIND_NOW it.
+
+Questions:
+-	Why is static-linked hello world 500K? :(  This is bad. (I'm sure I once
+	saw a system/linker that stripped unused functions (probably dropped whole
+	.o modules (if they were wholly untouched) from the .a libraries linked),
+	wouldn't it be cool if GNU ld did that?  I cannot believe that helloworld
+	and its dependencies actually covers 500K of stuff.  Even with glibc.
+
+-	Why is dynamic-linked hello world 7K? :((  This is worse.  It's only supposed
+	to now contain a couple of stubs saying "I use libc.so" and PLT entries
+	for printf, exit, etc.
+
