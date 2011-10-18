@@ -1,0 +1,30 @@
+Links and references:
+
+
+Emulators/UNIX archives:
+	http://simh.trailing-edge.com/
+	http://pdp11.aiju.de/
+	http://www.tuhs.org/wiki/Unix_Archive_Sites
+
+Booting/docs:
+	http://wwwlehre.dhbw-stuttgart.de/~helbig/os/v6/doc/index.html	(man pages)
+	http://minnie.tuhs.org/cgi-bin/utree.pl?file=V6/usr/source/s1/cat.s  (cat source)
+	http://osvirtual.net/en/unix-v5-v6-and-v7-for-pdp-11/
+	http://www.cosam.org/computers/dec/pdp11-23/20080414.html	(Installing BSD2.11)
+
+RetroBSD2.11 for PIC32:
+	http://code.google.com/p/retrobsd/wiki/How_To
+
+Linkers/loaders:
+	http://lwn.net/Articles/192624/		(Linux prelinking etc.)
+
+Small binaries, tiny ELFs:
+        http://asm.sourceforge.net/asmutils.html
+	http://www.muppetlabs.com/~breadbox/software/tiny/
+	http://www.busybox.net/
+	http://www.fefe.de/dietlibc/
+
+Misc:
+        http://www.superfrink.net/athenaeum/tom_davis_software_bloat.html
+	https://www.facebook.com/pages/Version-6-Unix/136166736414631
+		Facebook page for V6!  (Auto-generated but still, 3 people like this!)

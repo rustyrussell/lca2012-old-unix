@@ -50,10 +50,4 @@ Could be:
     mov    r0,r4
 
 Any filename starting with ‘-’ is treated as stdin. No error reporting, and only non-zero exit status if the *final* open fails.  A failed read just stops reading that file (exit status?  depends on whether close syscall blatts r0).
-References (Unix V6)
-http://pdp11.aiju.de/ (PDP-11 Javascript emulator, running V6)
-http://wwwlehre.dhbw-stuttgart.de/~helbig/os/v6/doc/index.html (man pages)
-http://minnie.tuhs.org/cgi-bin/utree.pl?file=V6/usr/source/s1/cat.s (cat source)
 Random Notes (Unix V6)
-Facebook page for V6!  (Auto-generated but still, 3 people like this!)
-https://www.facebook.com/pages/Version-6-Unix/136166736414631
