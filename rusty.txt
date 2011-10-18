@@ -1,0 +1,59 @@
+Background
+From Unix Programmers’ Manual Introduction: “Writing a program.  To enter the text of a source program into a UNIX file, use ed(I)”.
+
+Friendly style.  Introduction only 6 pages long!
+
+When you have finally gone through this entire process without provoking any diagnostics, the resulting program can be run by giving its name to the Shell in response to the “%” prompt.
+
+Next, you will need cdb (I) or db (I) to examine the remains of your program.  The former is useful for C programs, the latter for assembly-language. No debugger is much help for Fortran.
+
+Argh, it’s all in OCTAL!
+Analysis
+cat:
+
+# OD < /BIN/CAT
+
+0000000 000407 000210 000000 002002 000000 000000 000000 000001
+
+0000020 012605 005726 012702 001210 020527 000001 001421 005305
+
+0000040 003444 012600 121027 000055 001003 005067 002152 000410
+
+0000060 010067 000002 104405 000000 000000 103761 010067 002130
+
+0000100 016700 002124 104403 000210 001000 103412 010004 001410
+
+0000120 012703 000210 112300 004767 000046 005304 001373 000760
+
+0000140 016700 002064 001734 104406 000732 162702 001210 001407
+
+0000160 010267 000010 012700 000001 104404 001210 000000 104401
+
+0000200 110022 020227 002210 103407 012700 000001 104404 001210
+
+0000220 001000 012702 001210 000207
+
+0000230
+
+#
+Header: 407:   Not wp or shared.  210 = 136 bytes of text. 0 = bytes of initialized data. 2002 = 1026 bytes of bss.  0 = size of symtab.  0 = entry location.  0 = unused. 1 = relocation suppressed.
+ie. 16 bytes header, 136 bytes text, 152 bytes total!
+
+Extraneous instruction:
+    sys    read; ibuf; 512.
+    bes    3f
+    mov    r0,r4
+    beq    3f
+
+Could be:
+    blt    3f
+    mov    r0,r4
+
+Any filename starting with ‘-’ is treated as stdin. No error reporting, and only non-zero exit status if the *final* open fails.  A failed read just stops reading that file (exit status?  depends on whether close syscall blatts r0).
+References (Unix V6)
+http://pdp11.aiju.de/ (PDP-11 Javascript emulator, running V6)
+http://wwwlehre.dhbw-stuttgart.de/~helbig/os/v6/doc/index.html (man pages)
+http://minnie.tuhs.org/cgi-bin/utree.pl?file=V6/usr/source/s1/cat.s (cat source)
+Random Notes (Unix V6)
+Facebook page for V6!  (Auto-generated but still, 3 people like this!)
+https://www.facebook.com/pages/Version-6-Unix/136166736414631
