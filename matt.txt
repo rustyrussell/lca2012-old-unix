@@ -26,7 +26,7 @@ Things to investigate:
 - 	My x86 Ubuntu /bin/ls is 105K (97K text, 3K BSS, 1K rodata and the rest
 	ELF guff).
 	Use Valgrind -- how much of its 105K is actually ever accessed for the
-	common cases* of "ls" and "ls -l"?
+	common cases* of "ls" and "ls -l"?  (See later.)
 
 	Could augment PDP11 emul to do the same [done now]; have a "value" metric to
 	compare how much of the binaries are used on each platform?
@@ -95,3 +95,50 @@ Questions:
 	to now contain a couple of stubs saying "I use libc.so" and PLT entries
 	for printf, exit, etc.
 
+
+----------------------------------------------------------------------
+
+Determining a binary's "usefulness" figure:
+
+Using a patched 'apout', running a PDP/11 binary on Linux & using a simple
+bitmap to mark a byte 'touched' when a PDP/11 mem access or instruction fetch
+occurs.  This is written to a /tmp dir.
+
+A number of runs will generate a number of such bitmaps; a separate util,
+'anbin' will analyse these.  It takes a bunch, e.g. /tmp/binuse/cat.*, and
+unions their data (i.e. shows which bytes were touched across all combined runs
+of the program).  This will show how "useful" the contents of a binary file is
+across several different use/error cases.
+
+Note: a.out header does NOT land in memory.  So, cat binary is 152 bytes but we
+only count 136 in memory; make our own assumptions about the usefulness of the
+16-byte header.  Word (16b) 7 is unused.
+
+PDP/11 V6 stats (in % of binary ever accessed):
+
+sum
+sort
+cat
+diff
+grep
+date
+cat	152 bytes
+	[echo ^D |] cat		35.29%
+	cat nonexistentfile	33.09%
+	[echo moo |] cat	64.71%
+	cat file1 file2		94.85% (0x81 out of 0x88!)
+	cat - <&- 		41.91%
+	cat log.c nofile - <&-	99.26%
+	Total:			99.26% (0x87 of 0x88!)
+	Notes: The last remaining byte is the top byte of the immediate
+	       in a cmpb (r0), $55 instruction.  Instrs. are padded so
+	       always a multiple of 2 bytes long!  So, cmpb has an unused
+	       top byte.
+
+ls	4920 bytes
+	ls			42.54%
+	ls /some/path		42.48%
+	ls /some/bad/path	18.80%
+	ls -l			77.20%
+	ls -l /some/path	78.14%
+	ls -l /dev		88.89%
