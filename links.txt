@@ -28,3 +28,6 @@ Misc:
         http://www.superfrink.net/athenaeum/tom_davis_software_bloat.html
 	https://www.facebook.com/pages/Version-6-Unix/136166736414631
 		Facebook page for V6!  (Auto-generated but still, 3 people like this!)
+
+	http://www.subfurther.com/blog/2011/11/01/taking-c-seriously/
+	http://blog.gmarceau.qc.ca/2009/05/speed-size-and-dependability-of.html  (Relative speed & code size of various languages)
