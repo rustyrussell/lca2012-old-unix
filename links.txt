@@ -31,3 +31,5 @@ Misc:
 
 	http://www.subfurther.com/blog/2011/11/01/taking-c-seriously/
 	http://blog.gmarceau.qc.ca/2009/05/speed-size-and-dependability-of.html  (Relative speed & code size of various languages)
+	http://www.slideshare.net/DICEStudio/executable-bloat-how-it-happens-and-how-we-can-ght-it
+	http://spectrum.ieee.org/computing/software/the-strange-birth-and-long-life-of-unix/0
