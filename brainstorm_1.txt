@@ -1,0 +1,63 @@
+14 Dec 2011
+-----------
+
+
+Set of things to examine on PDP/11:
+
+cat
+ls
+grep
+'return 42'
+
+
+Rough plan:  (Point 6.5 inserted as 7)
+
+
+1) Sizes
+
+   State binary sizes, differences, straight off.
+   cat 152 bytes -> ~570 -> 50820 on Ubuntu.
+
+2) Background of PDP/11, V6 UNIX
+   Binary properties, a.out, no static, no stdio
+
+3) Examine return_42.c -> asm -> a.out
+   Tiniest possible program in C.
+
+4) cat - "OMFG something"...?
+   - Pull it apart, features, bugs (inject bugs?  Own C version?)
+   - Introduce "binary usefulness" code coverage
+   - Show there's 1 byte wasted, due to PDP/11 ISA
+
+5) x86 cat size
+   OK, bigger, but not static either so not fair comparison.
+   Static is HUGE.  OK, pare it down... return_42.c static is also
+   huge.  Horror at 500K "do nothing" binary.
+   - Why is static so big?  Dot dependency graphs
+   - x86 "binary usefulness", how much is actually used?  And cat?
+   - Binary density/effective density
+
+6) Same metrics for ls & grep (PDP11 & x86) side to side,
+   size, total binary use.
+   (Compare/show fairness of comparing PDP/11 & x86 machine code
+   density?)
+
+7) Improve size & density of binaries using uclibc/dietlibc/busybox
+   - Introduce asmutils
+   - ELF format & overhead
+
+8) "Features" ??
+   - Try to backport GNU cat to V6 UNIX
+   - forward-port V6 cat to Linux (dietlibc?)
+   - code coverage of each
+   - Find common point
+
+9) PDP/44
+   V6 stats
+   common stats
+
+10) So what?  Conclusions
+    - Return to "binary usefulness" stats on x86 (DSO stats);
+      wasted pages, global waste ~20MB?
+    - Features straw poll; do we really need/use them all?
+    - Pie chart:  ELF vs glibc vs code laziness vs x86 code density
