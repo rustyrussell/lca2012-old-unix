@@ -24,7 +24,7 @@ Rough plan:  (Point 6.5 inserted as 7)
 3) Examine return_42.c -> asm -> a.out
    Tiniest possible program in C.
 
-4) cat - "OMFG something"...?
+4) cat - "OMFG octal"...?
    - Pull it apart, features, bugs (inject bugs?  Own C version?)
    - Introduce "binary usefulness" code coverage
    - Show there's 1 byte wasted, due to PDP/11 ISA
@@ -47,10 +47,10 @@ Rough plan:  (Point 6.5 inserted as 7)
    - ELF format & overhead
 
 8) "Features" ??
-   - Try to backport GNU cat to V6 UNIX
+   - Try to backport GNU utils to V6 UNIX (fail)
    - forward-port V6 cat to Linux (dietlibc?)
    - code coverage of each
-   - Find common point
+   - Find common point: how many features can be reasonably introduced?
 
 9) PDP/44
    V6 stats
