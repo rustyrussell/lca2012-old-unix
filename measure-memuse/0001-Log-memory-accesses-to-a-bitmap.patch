@@ -1,0 +1,661 @@
+From 05fbfd75867477799945f6ee285af933a33b0144 Mon Sep 17 00:00:00 2001
+From: Matt Evans <matt@ozlabs.org>
+Date: Mon, 28 Nov 2011 11:36:59 +1100
+Subject: [PATCH] Log memory accesses to a bitmap
+
+Bitmap written out to a file, and 'anbin.c' analyses this to provide
+stats on how much of the binary is ever touched.
+---
+ Makefile  |    5 +-
+ anbin.c   |   74 ++++++++++++++++++++++++++++++
+ aout.c    |   22 ++++++++-
+ defines.h |   34 +++++++-------
+ ea.c      |    4 +-
+ fp.c      |   43 ++++++++---------
+ log.c     |  150 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ log.h     |   11 +++++
+ main.c    |    1 +
+ 9 files changed, 298 insertions(+), 46 deletions(-)
+ create mode 100644 anbin.c
+ create mode 100644 log.c
+ create mode 100644 log.h
+
+diff --git a/Makefile b/Makefile
+index fc1d7a6..8fe8fc5 100644
+--- a/Makefile
++++ b/Makefile
+@@ -30,10 +30,11 @@ VERSION= apout2.3beta1
+ SRCS=	cpu.c aout.c aout.h branch.c double.c ea.c itab.c main.c ke11a.c \
+ 	single.c fp.c v7trap.c bsdtrap.c defines.h v7trap.h debug.c \
+ 	bsdtrap.h bsd_ioctl.c bsd_signal.c magic.c v1trap.c v1trap.h \
+-	apout.1 apout.0 README COPYRIGHT CHANGES LIMITATIONS TODO Makefile
++	apout.1 apout.0 README COPYRIGHT CHANGES LIMITATIONS TODO Makefile \
++	log.c
+ OBJS=	aout.o branch.o bsd_ioctl.o bsd_signal.o bsdtrap.o cpu.o debug.o \
+ 	double.o ea.o fp.o itab.o ke11a.o magic.o main.o single.o v1trap.o \
+-	v7trap.o
++	v7trap.o log.o
+ 
+ apout: $(OBJS)
+ 	cc $(LDFLAGS) $(OBJS) -o apout $(LIBS)
+diff --git a/anbin.c b/anbin.c
+new file mode 100644
+index 0000000..b920f1f
+--- /dev/null
++++ b/anbin.c
+@@ -0,0 +1,74 @@
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <fcntl.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <errno.h>
++#include <string.h>
++
++/* Load all binaries on arg list and union the data... */
++int main(int argc, char *argv[])
++{
++	unsigned char *the_data;
++	unsigned char *loaded_data;
++	struct stat sb;
++	int fd;
++	unsigned int len;
++	int curarg;
++	int offs;
++	int setbits = 0;
++
++	if (argc == 1) {
++		printf("Syntax:  %s <file1> <file2> ...\n", argv[0]);
++		return 1;
++	}
++
++	/* First argument defines size */
++	if (stat(argv[1], &sb)) {
++		printf("Can't open %s! (%d)\n", argv[1], errno);
++		return 1;
++	}
++	len = sb.st_size;
++	if ((the_data = malloc(len)) == 0) {
++		printf("Can't malloc %d!\n", len);
++		return 1;
++	}
++	if ((loaded_data = malloc(len)) == 0) {
++		printf("Can't malloc %d!\n", len);
++		return 1;
++	}
++	memset(the_data, 0, len);
++	
++	for (curarg = 1; curarg < argc; curarg++) {
++		if ((fd = open(argv[curarg], O_RDONLY)) < 0) {
++			printf("Can't open %s! (%d)\n", argv[curarg], errno);
++			return 1;
++		}
++		if (fstat(fd, &sb)) {
++			printf("Can't stat %s! (%d)\n", argv[curarg], errno);
++			return 1;
++		}
++		if (sb.st_size != len) {
++			printf("Ugh, %s is %ld bytes, %d expected!  Skipping.\n",
++			       argv[curarg], sb.st_size, len);
++			continue;
++		}
++		if (read(fd, loaded_data, len) != len) {
++			printf("Short read on %s, skipping.\n", argv[curarg]);
++			continue;
++		}
++		close(fd);
++		/* OR bits from file into array */
++		for (offs = 0; offs < len; offs++) {
++			the_data[offs] |= loaded_data[offs];
++		}
++	}
++	/* Finally, print stats.  Popcount is obviously going to speed this,
++	 this is dumb currently.  It's a bit per byte in the original file. */
++	for (offs = 0; offs < len*8; offs++) {
++		if (the_data[offs/8] & (1<<(offs&7)))
++			setbits++;
++	}
++	printf("Files %d, %d bytes, %d of which touched.  (%.2f%%)\n",
++	       curarg, len*8, setbits, 100.0*(float)setbits/(float)(len*8));
++}
+diff --git a/aout.c b/aout.c
+index d2d3dd0..18f58f6 100644
+--- a/aout.c
++++ b/aout.c
+@@ -8,7 +8,7 @@
+ #include "aout.h"
+ 
+ /* Array of 64K for data and instruction space */
+-static u_int8_t darray[PDP_MEM_SIZE], iarray[PDP_MEM_SIZE];
++u_int8_t darray[PDP_MEM_SIZE], iarray[PDP_MEM_SIZE];
+ 
+ #ifdef EMU211
+ /* 2.11BSD allows up to 16 8K overlays in the 0430 and 0431 a.out types.
+@@ -387,9 +387,26 @@ int load_a_out(const char *file, const char *origpath, int want_env)
+ 
+ #ifdef ZERO_MEMORY
+   memset(darray, 0, PDP_MEM_SIZE);	/* Clear all memory */
+-  if (ispace != dspace) memset(iarray, 0, PDP_MEM_SIZE);
++  if (ispace != dspace) {
++	  fprintf(stderr, "ispace != dspace, accounting will be bad\n");
++	  memset(iarray, 0, PDP_MEM_SIZE);
++  }
+ #endif
+ 
++  printf("ibase %p (ispace %p), dbase %p (dspace %p),\n"
++	 " bbase %p, e.a_text 0x%x, e.a_data 0x%x, e.a_bss 0x%x\n",
++	 ibase, ispace, dbase, dspace, bbase, e.a_text, e.a_data, e.a_bss);
++
++  printf("Text loaded at ispace+0x%x, data at dspace+0x%x,\n"
++	 " bss at dspace+0x%x\n",
++	 ibase-ispace, dbase-dspace, bbase-dspace);
++
++  /* Keep track of interesting ranges; text start, end and data start, end.
++     Do not handle (BSD) split I+D spaces yet.
++     Don't care about BSS as not in binary file.
++  */
++  log_binary_addr_info(ibase-ispace, e.a_text, dbase-dspace, e.a_data);
++
+   					/* Now load the text into ibase */
+   for (size = e.a_text; size;) {
+     i = (int) fread(ibase, 1, (size_t) size, zin);
+@@ -455,7 +472,6 @@ int load_a_out(const char *file, const char *origpath, int want_env)
+   if ((bbase != 0) && (e.a_bss != 0))
+     memset(bbase, 0, (size_t) e.a_bss);
+ 
+-
+   /* Set up the registers and flags, and the stack */
+   (void) fclose(zin);
+   sim_init();
+diff --git a/defines.h b/defines.h
+index b0d8119..f02c954 100644
+--- a/defines.h
++++ b/defines.h
+@@ -13,6 +13,8 @@
+ #include <signal.h>
+ #include <errno.h>
+ 
++#include "log.h"
++
+ /* Defines for ifdef'd code -- define them in the Makefile */
+ 
+ /* #define DEBUG			adds in debugging code */
+@@ -344,38 +346,38 @@ extern u_int16_t *adptr;
+ #ifndef EMUV1
+ /* lli_word() - Load a word from the given ispace logical address. */
+ #define lli_word(addr, word) \
+-	{ adptr= (u_int16_t *)&(ispace[addr]); word= *adptr; }
++	{ adptr= (u_int16_t *)&(ispace[addr]); word= *adptr; log_iref(addr, 2); }
+ 
+ /* ll_word() - Load a word from the given logical address. */
+ #define ll_word(addr, word) \
+-	{ adptr= (u_int16_t *)&(dspace[addr]); word= *adptr; }
++	{ adptr= (u_int16_t *)&(dspace[addr]); word= *adptr; log_dref(addr, 2); }
+ 
+ /* sl_word() - Store a word at the given logical address. */
+ #ifdef WRITEBASE
+ #define sl_word(addr, word) \
+ 	{ if ((u_int16_t)addr < dwrite_base) seg_fault(); \
+-	  adptr= (u_int16_t *)&(dspace[addr]); *adptr= word; }
++	  adptr= (u_int16_t *)&(dspace[addr]); *adptr= word; log_dref(addr, 2); }
+ #else
+ #define sl_word(addr, word) \
+-	{ adptr= (u_int16_t *)&(dspace[addr]); *adptr= word; }
++	{ adptr= (u_int16_t *)&(dspace[addr]); *adptr= word; log_dref(addr, 2); }
+ #endif
+ 
+ /* lli_byte() - Load a byte from the given logical ispace address. */
+ #define lli_byte(addr, byte) \
+-    byte = ispace[addr];
++	do { byte = ispace[addr]; log_iref(addr, 1); } while(0)
+ 
+ /* ll_byte() - Load a byte from the given logical address. */
+ #define ll_byte(addr, byte) \
+-    byte = dspace[addr];
++	do { byte = dspace[addr]; log_dref(addr, 1); } while(0)
+ 
+ /* sl_byte() - Store a byte at the given logical address. */
+ #ifdef WRITEBASE
+ #define sl_byte(addr, byte) \
+ 	{ if (addr < dwrite_base) seg_fault(); \
+-	  dspace[addr]= byte; }
++	  dspace[addr]= byte; log_dref(addr, 1); }
+ #else
+ #define sl_byte(addr, byte) \
+-	{ dspace[addr]= byte; }
++	{ dspace[addr]= byte; log_dref(addr, 1); }
+ #endif
+ #else
+ 				/* These versions of the macros are required */
+@@ -388,14 +390,14 @@ extern u_int16_t *adptr;
+ #define lli_word(addr, word) \
+ 	{ if ((Binary<IS_V3) && (addr>=KE11LO) && (addr<=KE11HI)) {	\
+ 		word= kell_word(addr);					\
+-	  } else { adptr= (u_int16_t *)&(ispace[addr]); word= *adptr; }	\
++	  } else { adptr= (u_int16_t *)&(ispace[addr]); word= *adptr; log_iref(addr, 2); }	\
+ 	}
+ 
+ /* ll_word() - Load a word from the given logical address. */
+ #define ll_word(addr, word) \
+ 	{ if ((Binary<IS_V3) && (addr>=KE11LO) && (addr<=KE11HI)) {	\
+ 		word= kell_word(addr);					\
+-	  } else { adptr= (u_int16_t *)&(dspace[addr]); word= *adptr; }	\
++	  } else { adptr= (u_int16_t *)&(dspace[addr]); word= *adptr; log_dref(addr, 2); }	\
+ 	}
+ 
+ /* sl_word() - Store a word at the given logical address. */
+@@ -404,25 +406,25 @@ extern u_int16_t *adptr;
+ 	{ if ((u_int16_t)addr < dwrite_base) seg_fault(); \
+ 	  if ((Binary<IS_V3) && (addr>=KE11LO) && (addr<=KE11HI)) {	\
+ 		kesl_word(addr, word);					\
+-	  } else { adptr= (u_int16_t *)&(dspace[addr]); *adptr= word; }	\
++	  } else { adptr= (u_int16_t *)&(dspace[addr]); *adptr= word; log_dref(addr, 2); }	\
+ 	}
+ #else
+ #define sl_word(addr, word) \
+ 	{ if ((Binary<IS_V3) && (addr>=KE11LO) && (addr<=KE11HI)) {	\
+ 		kesl_word(addr, word);					\
+-	  } else { adptr= (u_int16_t *)&(dspace[addr]); *adptr= word; }	\
++	  } else { adptr= (u_int16_t *)&(dspace[addr]); *adptr= word; log_dref(addr, 2); }	\
+ 	}
+ #endif
+ 
+ /* lli_byte() - Load a byte from the given logical ispace address. */
+ #define lli_byte(addr, byte) \
+-    byte = ispace[addr];
++	do { byte = ispace[addr]; log_iref(addr, 1); } while (0)
+ 
+ /* ll_byte() - Load a byte from the given logical address. */
+ #define ll_byte(addr, byte) \
+ 	{ if ((Binary<IS_V3) && (addr>=KE11LO) && (addr<=KE11HI)) {	\
+ 		byte= kell_byte(addr);					\
+-    	  } else byte = dspace[addr];					\
++	  } else { byte = dspace[addr]; log_dref(addr, 1); }		\
+ 	}
+ 
+ /* sl_byte() - Store a byte at the given logical address. */
+@@ -431,13 +433,13 @@ extern u_int16_t *adptr;
+ 	{ if (addr < dwrite_base) seg_fault(); \
+ 	  if ((Binary<IS_V3) && (addr>=KE11LO) && (addr<=KE11HI)) {	\
+ 		kesl_byte(addr, byte);					\
+-	  } else dspace[addr]= byte; 					\
++	  } else { dspace[addr]= byte; log_dref(addr, 1); }		\
+ 	}
+ #else
+ #define sl_byte(addr, byte) \
+ 	{ if ((Binary<IS_V3) && (addr>=KE11LO) && (addr<=KE11HI)) {	\
+ 		kesl_byte(addr, byte);					\
+-	  } else dspace[addr]= byte; 					\
++	  } else { dspace[addr]= byte; log_dref(addr, 1); }		\
+ 	}
+ #endif
+ #endif
+diff --git a/ea.c b/ea.c
+index 31c9587..31381d8 100644
+--- a/ea.c
++++ b/ea.c
+@@ -81,7 +81,7 @@ loadb_dst(void)
+ 	addr = regs[DST_REG];
+ 	ea_addr = addr;
+ 	if (DST_REG == PC) {
+-	    lli_byte(addr, dstbyte)
++		lli_byte(addr, dstbyte);
+ 	} else {
+ 	    ll_byte(addr, dstbyte);
+ 	}
+@@ -90,7 +90,7 @@ loadb_dst(void)
+ 	addr = regs[DST_REG];
+ 	ea_addr = addr;
+ 	if (DST_REG == PC) {
+-	    lli_byte(addr, dstbyte)
++		lli_byte(addr, dstbyte);
+ 	} else {
+ 	    ll_byte(addr, dstbyte);
+ 	}
+diff --git a/fp.c b/fp.c
+index b3bc85d..b7a706d 100644
+--- a/fp.c
++++ b/fp.c
+@@ -104,23 +104,21 @@ load_flt(void)
+ 	fladdr=NULL; return;
+     case 1:
+ 	if (DST_REG == PC) {
+-	    intptr = (u_int16_t *)&ispace[regs[DST_REG]];
+-	    intpair.lo= *intptr;
++	    lli_word(regs[DST_REG], intpair.lo);
+ 	    intpair.hi=0;
+ 	    fladdr= (pdpfloat *)&intpair;
+-	} else fladdr = (pdpfloat *)&dspace[regs[DST_REG]];
++	} else { fladdr = (pdpfloat *)&dspace[regs[DST_REG]]; log_dref(regs[DST_REG], 4); }
+ 	from11float(&Srcflt, fladdr);
+ 	return;
+     case 2:
+ 	if (DST_REG == PC) {
+-	    intptr = (u_int16_t *)&ispace[regs[DST_REG]];
+-	    intpair.lo= *intptr;
++	    lli_word(regs[DST_REG], intpair.lo);
+ 	    intpair.hi=0;
+ 	    fladdr= (pdpfloat *)&intpair;
+ 	    from11float(&Srcflt, fladdr);
+ 	    regs[DST_REG] += 2;
+ 	} else {
+-	    fladdr = (pdpfloat *)&dspace[regs[DST_REG]];
++	    fladdr = (pdpfloat *)&dspace[regs[DST_REG]]; log_dref(regs[DST_REG], 4);
+ 	    from11float(&Srcflt, fladdr);
+ 	    if (FPMODE) regs[DST_REG] += 8;
+ 	    else regs[DST_REG] += 4;
+@@ -129,14 +127,13 @@ load_flt(void)
+     case 3:
+ 	ll_word(regs[DST_REG], indirect);
+ 	if (DST_REG == PC) {
+-	    intptr = (u_int16_t *)&ispace[indirect];
+-	    intpair.lo= *intptr;
++	    lli_word(indirect, intpair.lo);
+ 	    intpair.hi=0;
+ 	    fladdr= (pdpfloat *)&intpair;
+ 	    from11float(&Srcflt, fladdr);
+ 	    regs[DST_REG] += 2;
+ 	} else {
+-	    fladdr = (pdpfloat *)&dspace[indirect];
++	    fladdr = (pdpfloat *)&dspace[indirect]; log_dref(indirect, 4);
+ 	    from11float(&Srcflt, fladdr);
+ 	    if (FPMODE) regs[DST_REG] += 8;
+ 	    else regs[DST_REG] += 4;
+@@ -145,21 +142,21 @@ load_flt(void)
+     case 4:
+ 	if (FPMODE) regs[DST_REG] -= 8;
+ 	else regs[DST_REG] -= 4;
+-	fladdr = (pdpfloat *)&dspace[regs[DST_REG]];
++	fladdr = (pdpfloat *)&dspace[regs[DST_REG]]; log_dref(regs[DST_REG], 4);
+ 	from11float(&Srcflt, fladdr);
+ 	return;
+     case 5:
+ 	if (FPMODE) regs[DST_REG] -= 8;
+ 	else regs[DST_REG] -= 4;
+ 	ll_word(regs[DST_REG], indirect);
+-	fladdr = (pdpfloat *)&dspace[indirect];
++	fladdr = (pdpfloat *)&dspace[indirect]; log_dref(indirect, 4);
+ 	from11float(&Srcflt, fladdr);
+ 	return;
+     case 6:
+ 	lli_word(regs[PC], indirect);
+ 	regs[PC] += 2;
+ 	indirect= regs[DST_REG] + indirect;
+-	fladdr = (pdpfloat *)&dspace[indirect];
++	fladdr = (pdpfloat *)&dspace[indirect]; log_dref(indirect, 4);
+ 	from11float(&Srcflt, fladdr);
+ 	return;
+     case 7:
+@@ -167,7 +164,7 @@ load_flt(void)
+ 	regs[PC] += 2;
+ 	indirect = regs[DST_REG] + indirect;
+ 	ll_word(indirect, addr);
+-	fladdr = (pdpfloat *)&dspace[addr];
++	fladdr = (pdpfloat *)&dspace[addr]; log_dref(addr, 4);
+ 	from11float(&Srcflt, fladdr);
+ 	return;
+     }
+@@ -189,11 +186,11 @@ save_flt(void)
+ 	fregs[DST_REG] = Srcflt;
+ 	return;
+     case 1:
+-	fladdr = (pdpfloat *)&dspace[regs[DST_REG]];
++	fladdr = (pdpfloat *)&dspace[regs[DST_REG]]; log_dref(regs[DST_REG], 4);
+ 	to11float(&Srcflt, fladdr);
+ 	return;
+     case 2:
+-	fladdr = (pdpfloat *)&dspace[regs[DST_REG]];
++	fladdr = (pdpfloat *)&dspace[regs[DST_REG]]; log_dref(regs[DST_REG], 4);
+ 	to11float(&Srcflt, fladdr);
+ 	if (DST_REG == PC) regs[DST_REG] += 2;
+ 	else if (FPMODE) regs[DST_REG] += 8;
+@@ -201,7 +198,7 @@ save_flt(void)
+ 	return;
+     case 3:
+ 	ll_word(regs[DST_REG], indirect);
+-	fladdr = (pdpfloat *)&dspace[indirect];
++	fladdr = (pdpfloat *)&dspace[indirect]; log_dref(indirect, 4);
+ 	to11float(&Srcflt, fladdr);
+ 	if (DST_REG == PC) regs[DST_REG] += 2;
+ 	else if (FPMODE) regs[DST_REG] += 8;
+@@ -210,21 +207,21 @@ save_flt(void)
+     case 4:
+ 	if (FPMODE) regs[DST_REG] -= 8;
+ 	else regs[DST_REG] -= 4;
+-	fladdr = (pdpfloat *)&dspace[regs[DST_REG]];
++	fladdr = (pdpfloat *)&dspace[regs[DST_REG]]; log_dref(regs[DST_REG], 4);
+ 	to11float(&Srcflt, fladdr);
+ 	return;
+     case 5:
+ 	if (FPMODE) regs[DST_REG] -= 8;
+ 	else regs[DST_REG] -= 4;
+ 	ll_word(regs[DST_REG], indirect);
+-	fladdr = (pdpfloat *)&dspace[indirect];
++	fladdr = (pdpfloat *)&dspace[indirect]; log_dref(indirect, 4);
+ 	to11float(&Srcflt, fladdr);
+ 	return;
+     case 6:
+ 	lli_word(regs[PC], indirect);
+ 	regs[PC] += 2;
+ 	indirect = regs[DST_REG] + indirect;
+-	fladdr = (pdpfloat *)&dspace[indirect];
++	fladdr = (pdpfloat *)&dspace[indirect]; log_dref(indirect, 4);
+ 	to11float(&Srcflt, fladdr);
+ 	return;
+     case 7:
+@@ -232,7 +229,7 @@ save_flt(void)
+ 	regs[PC] += 2;
+ 	indirect = regs[DST_REG] + indirect;
+ 	ll_word(indirect, addr);
+-	fladdr = (pdpfloat *)&dspace[addr];
++	fladdr = (pdpfloat *)&dspace[addr]; log_dref(addr, 4);
+ 	to11float(&Srcflt, fladdr);
+ 	return;
+     }
+@@ -241,15 +238,15 @@ save_flt(void)
+ 
+ /* lli_long() - Load a long from the given ispace logical address. */
+ #define lli_long(addr, word) \
+-	{ adptr= (u_int16_t *)&(ispace[addr]); copylong(word, *adptr); } \
++	{ adptr= (u_int16_t *)&(ispace[addr]); log_iref(addr, 4); copylong(word, *adptr); } \
+ 
+ /* ll_long() - Load a long from the given logical address. */
+ #define ll_long(addr, word) \
+-	{ adptr= (u_int16_t *)&(dspace[addr]); copylong(word, *adptr); } \
++	{ adptr= (u_int16_t *)&(dspace[addr]); log_dref(addr, 4); copylong(word, *adptr); } \
+ 
+ /* sl_long() - Store a long from the given logical address. */
+ #define sl_long(addr, word) \
+-	{ adptr= (u_int16_t *)&(dspace[addr]); copylong(*adptr, word); } \
++	{ adptr= (u_int16_t *)&(dspace[addr]); log_dref(addr, 4); copylong(*adptr, word); } \
+ 
+ static void 
+ load_long(void)
+diff --git a/log.c b/log.c
+new file mode 100644
+index 0000000..8c8d460
+--- /dev/null
++++ b/log.c
+@@ -0,0 +1,150 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++#include <inttypes.h>
++#include <libgen.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <fcntl.h>
++#include "defines.h"
++
++
++
++/* bitmasks for memory spaces */
++#ifdef WE_CARE_ABOUT_I_AND_D_SEPARATE
++uint8_t d_touched[PDP_MEM_SIZE/8];
++uint8_t i_touched[PDP_MEM_SIZE/8];
++#else
++uint8_t touched[PDP_MEM_SIZE/8];
++#define i_touched touched
++#define d_touched touched
++#endif
++
++extern u_int8_t darray[PDP_MEM_SIZE], iarray[PDP_MEM_SIZE];
++
++static char bin_name_s[PATH_MAX];
++char *bin_name;
++
++/* interesting spans (actual addresses); two, for text & data */
++#define INTERESTING_SPANS 2
++struct {
++	unsigned int start;
++	unsigned int end;
++} spans[INTERESTING_SPANS];
++
++void log_binary_addr_info(unsigned int t_start, unsigned int t_size,
++			  unsigned int d_start, unsigned int d_size)
++{
++	spans[0].start 	= t_start;
++	spans[0].end 	= t_start + t_size;
++	spans[1].start 	= d_start;
++	spans[1].end 	= d_start + d_size;
++}
++
++void log_iref(unsigned int addr, unsigned int len)
++{
++	int i;
++	for (i = 0; i < len; i++)
++		i_touched[(addr+i)/8] |= (1<<((addr+i) & 7));
++}
++
++void log_dref(unsigned int addr, unsigned int len)
++{
++	int i;
++	for (i = 0; i < len; i++)
++		d_touched[(addr+i)/8] |= (1<<((addr+i) & 7));	
++}
++
++/* Scan the interesting spans, and see how much of the addresses contained
++   within were touched during the run of the program.
++*/
++void log_dump(void)
++{
++	int is, ds, ts, i;
++	int interesting_accesses = 0;
++	int interesting_inst = 0;
++	int interesting_data = 0;
++	unsigned int totalbin;
++	char temp_path[PATH_MAX]; /* Enormous! */
++	struct stat sb;
++	int tf_try = 0;
++	int fd;
++
++	is = ds = ts = 0;
++	for (i = 0; i < PDP_MEM_SIZE; i++) {
++#ifdef WE_CARE_ABOUT_I_AND_D_SEPARATE
++		int it = (i_touched[i/8] & (1<<(i & 7)));
++		int dt = (d_touched[i/8] & (1<<(i & 7)));
++#else
++		int byte_touched = (touched[i/8] & (1<<(i & 7)));
++#endif
++		int interesting = 0;
++		
++		if ((spans[0].start <= i && i < spans[0].end) ||
++		    (spans[1].start <= i && i < spans[1].end)) {
++			interesting = 1;
++		}
++#ifdef WE_CARE_ABOUT_I_AND_D_SEPARATE
++		if (it) {
++			if (interesting)
++				interesting_inst++;
++			else
++				is++;
++		}
++		if (dt) {
++			if (interesting)
++				interesting_data++;
++			else
++				ds++;
++		}
++		if (it || dt) {
++#else
++			if (byte_touched) {
++#endif
++			if (interesting)
++				interesting_accesses++;
++			else
++				ts++;
++		}
++	}
++
++	printf("Log of %s stats:  I accessed 0x%x, D accessed 0x%x, total 0x%x \n"
++	       " Interesting I 0x%x, D 0x%x, total 0x%x\n", bin_name,
++	       is, ds, ts, interesting_inst, interesting_data, interesting_accesses);
++
++	totalbin = (spans[0].end - spans[0].start) + (spans[1].end - spans[1].start);
++	printf("[Total loaded from file = 0x%x ; interesting accesses %.2f%%\n]",
++	       totalbin, 100.0*(float)interesting_accesses/(float)totalbin);
++
++	/* Save bitmaps for later perusal/unionning */
++
++	do {
++		/* Yes, this is not atomic.  I promise myself that I won't run
++		   this in parallel.
++		*/
++		sprintf(temp_path, "/tmp/binuse/%s.%04d", bin_name, tf_try++);
++	} while (stat(temp_path, &sb) == 0);
++
++	if ((fd = open(temp_path, O_CREAT | O_RDWR, 0655)) < 0) {
++		perror("Can't open output stats file");
++		return;
++	}
++	/* Write bytes covering interesting subject bytes */
++	write(fd, &touched[spans[0].start/8], (spans[0].end-spans[0].start)/8);
++	write(fd, &touched[spans[1].start/8], (spans[1].end-spans[1].start)/8);
++	close(fd);
++}
++
++void log_init(char *name)
++{
++	int i;
++
++	strcpy(bin_name_s, name);
++	bin_name = basename(bin_name_s);
++
++	for (i = 0; i < PDP_MEM_SIZE/8; i++) {
++		d_touched[i] = 0;
++		i_touched[i] = 0;
++	}
++	atexit(log_dump);
++}
+diff --git a/log.h b/log.h
+new file mode 100644
+index 0000000..f3ed217
+--- /dev/null
++++ b/log.h
+@@ -0,0 +1,11 @@
++#ifndef log_H
++#define log_H
++
++void log_binary_addr_info(unsigned int t_start, unsigned int t_size,
++			  unsigned int d_start, unsigned int d_size);
++void log_dref(unsigned int addr, unsigned int len);
++void log_iref(unsigned int addr, unsigned int len);
++
++void log_init(char *name);
++
++#endif
+diff --git a/main.c b/main.c
+index cd52f6e..38e45e5 100644
+--- a/main.c
++++ b/main.c
+@@ -100,6 +100,7 @@ main(int argc, char **argv)
+ 	exit(1);
+     }
+ 
++    log_init(argv[0]);
+ 				/* Other emulated systems (RT-11) can go here */
+ 
+     run();			/* Now run the binary */
+-- 
+1.7.0.4
+

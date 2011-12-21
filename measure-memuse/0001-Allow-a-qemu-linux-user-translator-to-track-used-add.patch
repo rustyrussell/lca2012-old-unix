@@ -1,0 +1,982 @@
+From 0c352d9535d39d5c554b8abfa3645368a0fd6a13 Mon Sep 17 00:00:00 2001
+From: Matt Evans <matt@ozlabs.org>
+Date: Fri, 21 Oct 2011 14:48:45 +1100
+Subject: [PATCH] Allow a qemu linux-user translator to track used address
+ space
+
+mlog.c/h logs memory regions & provides a bitmap for 'touched' data.
+TCG generates BTS instructions to set this bitmap; other syscall/cpu-all.h
+stuff will log memory accesses accordingly.
+
+Also adds analyse.c, a separate binary that can be used to get
+statistics from the written-out bitmap logfiles.
+---
+ Makefile.target       |    2 +-
+ cpu-all.h             |   27 ++--
+ cpu-exec.c            |    4 +
+ exec.c                |    1 +
+ linux-user/analyse.c  |  187 ++++++++++++++++++++++
+ linux-user/main.c     |    2 +
+ linux-user/mlog.c     |  417 +++++++++++++++++++++++++++++++++++++++++++++++++
+ linux-user/mlog.h     |   19 +++
+ linux-user/qemu.h     |    4 +
+ linux-user/syscall.c  |    6 +
+ tcg/i386/tcg-target.c |   66 ++++++++
+ 11 files changed, 723 insertions(+), 12 deletions(-)
+ create mode 100644 linux-user/analyse.c
+ create mode 100644 linux-user/mlog.c
+ create mode 100644 linux-user/mlog.h
+
+diff --git a/Makefile.target b/Makefile.target
+index 2800f47..4d0468b 100644
+--- a/Makefile.target
++++ b/Makefile.target
+@@ -108,7 +108,7 @@ $(call set-vpath, $(SRC_PATH)/linux-user:$(SRC_PATH)/linux-user/$(TARGET_ABI_DIR
+ 
+ QEMU_CFLAGS+=-I$(SRC_PATH)/linux-user -I$(SRC_PATH)/linux-user/$(TARGET_ABI_DIR)
+ obj-y = main.o syscall.o strace.o mmap.o signal.o thunk.o \
+-      elfload.o linuxload.o uaccess.o gdbstub.o cpu-uname.o \
++      elfload.o linuxload.o mlog.o uaccess.o gdbstub.o cpu-uname.o \
+       qemu-malloc.o $(oslib-obj-y)
+ 
+ obj-$(TARGET_HAS_BFLT) += flatload.o
+diff --git a/cpu-all.h b/cpu-all.h
+index 30ae17d..ae6b7af 100644
+--- a/cpu-all.h
++++ b/cpu-all.h
+@@ -21,6 +21,7 @@
+ 
+ #include "qemu-common.h"
+ #include "cpu-common.h"
++#include "mlog.h"
+ 
+ /* some important defines:
+  *
+@@ -205,17 +206,20 @@ typedef union {
+  */
+ static inline int ldub_p(const void *ptr)
+ {
++	mlog_la((void*)ptr, 1);
+     return *(uint8_t *)ptr;
+ }
+ 
+ static inline int ldsb_p(const void *ptr)
+ {
++	mlog_la((void*)ptr, 1);
+     return *(int8_t *)ptr;
+ }
+ 
+ static inline void stb_p(void *ptr, int v)
+ {
+     *(uint8_t *)ptr = v;
++	mlog_la(ptr, 1);
+ }
+ 
+ /* NOTE: on arm, putting 2 in /proc/sys/debug/alignment so that the
+@@ -602,17 +606,17 @@ static inline void stfq_be_p(void *ptr, float64 v)
+ #define stfl_p(p, v) stfl_be_p(p, v)
+ #define stfq_p(p, v) stfq_be_p(p, v)
+ #else
+-#define lduw_p(p) lduw_le_p(p)
+-#define ldsw_p(p) ldsw_le_p(p)
+-#define ldl_p(p) ldl_le_p(p)
+-#define ldq_p(p) ldq_le_p(p)
+-#define ldfl_p(p) ldfl_le_p(p)
+-#define ldfq_p(p) ldfq_le_p(p)
+-#define stw_p(p, v) stw_le_p(p, v)
+-#define stl_p(p, v) stl_le_p(p, v)
+-#define stq_p(p, v) stq_le_p(p, v)
+-#define stfl_p(p, v) stfl_le_p(p, v)
+-#define stfq_p(p, v) stfq_le_p(p, v)
++#define lduw_p(p) (mlog_la(p, 2), lduw_le_p(p))
++#define ldsw_p(p) (mlog_la(p, 2), ldsw_le_p(p))
++#define ldl_p(p) (mlog_la(p, 4), ldl_le_p(p))
++#define ldq_p(p) (mlog_la(p, 8), ldq_le_p(p))
++#define ldfl_p(p) (mlog_la(p, 4), ldfl_le_p(p))
++#define ldfq_p(p) (mlog_la(p, 8), ldfq_le_p(p))
++#define stw_p(p, v) (mlog_la(p, 2), stw_le_p(p, v))
++#define stl_p(p, v) (mlog_la(p, 4), stl_le_p(p, v))
++#define stq_p(p, v) (mlog_la(p, 8), stq_le_p(p, v))
++#define stfl_p(p, v) (mlog_la(p, 4), stfl_le_p(p, v))
++#define stfq_p(p, v) (mlog_la(p, 8), stfq_le_p(p, v))
+ #endif
+ 
+ /* MMU memory access macros */
+@@ -835,6 +839,7 @@ void run_on_cpu(CPUState *env, void (*func)(void *data), void *data);
+ #define CPU_LOG_IOPORT     (1 << 7)
+ #define CPU_LOG_TB_CPU     (1 << 8)
+ #define CPU_LOG_RESET      (1 << 9)
++#define CPU_LOG_MAPS       (1 << 10)
+ 
+ /* define log items */
+ typedef struct CPULogItem {
+diff --git a/cpu-exec.c b/cpu-exec.c
+index dbdfdcc..e17147e 100644
+--- a/cpu-exec.c
++++ b/cpu-exec.c
+@@ -22,6 +22,7 @@
+ #include "tcg.h"
+ #include "kvm.h"
+ #include "qemu-barrier.h"
++#include "mlog.h"
+ 
+ #if !defined(CONFIG_SOFTMMU)
+ #undef EAX
+@@ -760,6 +761,9 @@ static inline int handle_cpu_signal(unsigned long pc, unsigned long address,
+     qemu_printf("qemu: SIGSEGV pc=0x%08lx address=%08lx w=%d oldset=0x%08lx\n",
+                 pc, address, is_write, *(unsigned long *)old_set);
+ #endif
++    if (mlog_handle_fault(address)) {
++	    return 1;
++    }
+     /* XXX: locking issue */
+     if (is_write && page_unprotect(h2g(address), pc, puc)) {
+         return 1;
+diff --git a/exec.c b/exec.c
+index db9ff55..5a23964 100644
+--- a/exec.c
++++ b/exec.c
+@@ -1691,6 +1691,7 @@ const CPULogItem cpu_log_items[] = {
+     { CPU_LOG_IOPORT, "ioport",
+       "show all i/o ports accesses" },
+ #endif
++    { CPU_LOG_MAPS, "maps", "show DSO maps logged" },
+     { 0, NULL, NULL },
+ };
+ 
+diff --git a/linux-user/analyse.c b/linux-user/analyse.c
+new file mode 100644
+index 0000000..35147ab
+--- /dev/null
++++ b/linux-user/analyse.c
+@@ -0,0 +1,187 @@
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <fcntl.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <errno.h>
++#include <string.h>
++#include <stdint.h>
++
++/* Load all binaries on arg list and union the data.
++
++   Binary format:
++
++	   Header:
++	   0	248bytes	pathname to DSO we represent
++	   248	64b	File size
++	   Chunk format:
++	   0	32b	offset into DSO
++	   4	32b	len (memory span/8)
++	   8	len	len bytes of bitmap
++	   ... more chunks
++
++   Chunks can overlap!
++
++   Beware, truncate chunks when they cross the file len!  Last page in
++   file will be rounded up.
++*/
++
++#define ROUND8(x) (((x) + 7) & ~7)
++
++int main(int argc, char *argv[])
++{
++	unsigned char *the_data = 0;
++	unsigned char *loaded_data = 0;
++	struct stat sb;
++	int fd;
++	int curarg;
++	int offs;
++	int setbits = 0;
++	uint64_t dso_size = 0;
++	unsigned long allocsize;
++	int bytes_per_page = 0;
++	int unused_page_bytes = 0;
++	int pages = 0;
++	int filecount = 0;
++	int verbose = 1;
++
++	if (argc == 1) {
++		printf("Syntax:  %s [-q] <file1> <file2> ...\n", argv[0]);
++		return 1;
++	}
++	curarg = 1;
++
++	/* Shiteful */
++	if (!strcmp(argv[curarg], "-q")) {
++		curarg++;
++		verbose = 0;
++	}
++
++	for (; curarg < argc; curarg++) {
++		struct fheader {
++			char fname[248];
++			uint64_t size;
++		} hdr;
++
++		struct cheader {
++			uint32_t offset;
++			uint32_t bm_len;
++		} chdr;
++
++		filecount++;
++		if ((fd = open(argv[curarg], O_RDONLY)) < 0) {
++			printf("Can't open %s! (%d)\n", argv[curarg], errno);
++			return 1;
++		}
++		if (fstat(fd, &sb)) {
++			printf("Can't stat %s! (%d)\n", argv[curarg], errno);
++			return 1;
++		}
++
++		if (read(fd, &hdr, sizeof(hdr)) != sizeof(hdr)) {
++			printf("Short read on %s (%d), skipping.\n", argv[curarg], errno);
++			continue;
++		}
++
++		/* Make sure we've space for the DSO size.  First file open
++		   determines this size.
++		*/
++		if (dso_size != 0 && ROUND8(hdr.size) != dso_size) {
++			printf("%s has DSOsize %lld, expecting %lld. Exiting.\n",
++			       argv[curarg], hdr.size, dso_size);
++			exit(1);
++		}
++		if (dso_size == 0) {
++			/* Allocate a bit more, as source can't tell (OK, doesn't try)
++			   if an mmap goes off the end of the file.  We pretend the
++			   file is 4K*8 (32K) larger; we just don't look at the overflow
++			   when calculating the stats.
++			*/
++			allocsize = (hdr.size + 32768 + 1)/8;
++			the_data = malloc(allocsize);
++			loaded_data = malloc(allocsize);
++			if (the_data == 0 || loaded_data == 0) {
++				printf("Can't malloc %d, exiting.\n", allocsize);
++				exit(1);
++			}
++			memset(the_data, 0, allocsize);
++			dso_size = ROUND8(hdr.size);
++		}
++
++		while (lseek(fd, 0, SEEK_CUR) < sb.st_size) {
++			/* This array, like the_data, represents a byte of the DSO
++			   with a bit of the array.
++			*/
++			memset(loaded_data, 0, allocsize);
++
++			/* The plan:  Load a chunk.  It'll be <= (round_up_to_4k(fsize)/8+8)
++			 */
++			if (read(fd, &chdr, sizeof(chdr)) != sizeof(chdr)) {
++				printf("Short read on %s (%d), exiting.\n",
++				       argv[curarg], errno);
++				exit(1);
++			}
++			/* We assume the chunks at least represent 8-byte aligned data.
++			   In practice, they're 4K aligned at least.
++			*/
++			if (verbose)
++				printf("Loading chunk for offset 0x%lx (len 0x%lx)\n",
++				       chdr.offset, chdr.bm_len*8);
++			if (read(fd, &loaded_data[chdr.offset/8], chdr.bm_len) != chdr.bm_len) {
++				printf("Short read on %s, exiting.\n", argv[curarg]);
++				exit(1);
++			}
++			/* OR bits from chunk into the_data array.
++			   Both arrays are mod 8 sized */
++			for (offs = 0; offs < allocsize; offs += 8) {
++				*(uint64_t *)&the_data[offs] |=
++					*(uint64_t *)&loaded_data[offs];
++			}
++		}
++
++		close(fd);
++	}
++	/* Finally, print stats.  Popcount is obviously going to speed this,
++	 this is dumb currently.  It's a bit per byte in the original file. */
++	for (offs = 0; offs < dso_size; offs++) {
++		if (the_data[offs/8] & (1<<(offs&7)))
++			setbits++;
++	}
++
++	/* Work out subject page boundaries (every 4Kbits in our
++	   bitmap) and log how much of a page is ever accessed; keep an average
++	   "bytes per MAPPED page used".  (i.e. if 0 accessed, don't count
++	   this.)
++
++	   Assumption: Pages are mapped aligned from DSOs.  The loaders do not
++	   copy-and-realign.  (Todo: script readelf/objdump to assert this!  Visually
++	   (and logically-- ew!) this seems reasonable.)
++	 */
++	for (offs = 0; offs < dso_size; offs += 4096) {
++		int poffs;
++		int page_bits_touched = 0;
++		for (poffs = 0; poffs < 4096; poffs++) {
++			if (the_data[(offs+poffs)/8] & (1<<((offs+poffs)&7)))
++				page_bits_touched++;
++		}
++		if (page_bits_touched) {
++			/* Only count pages that'll ever be loaded from disc, i.e. >1
++			   byte touched. */
++			pages++;
++			bytes_per_page += page_bits_touched;
++
++			unused_page_bytes += (4096 - page_bits_touched);
++
++			if (verbose)
++				printf("Page %06d: %d bytes touched (%.2f%%)\n",
++				       offs/4096, page_bits_touched,
++				       100.0*(float)page_bits_touched/4096.0);
++		}
++	}
++
++	printf("Files %d, %d bytes, %d of which touched.  (%.2f%%)\n",
++	       filecount, dso_size, setbits, 100.0*(float)setbits/(float)(dso_size));
++
++	printf("%d pages touched, avg. %.2f bytes per page, %d bytes unused.\n", pages,
++	       (float)bytes_per_page/(float)pages, unused_page_bytes);
++}
+diff --git a/linux-user/main.c b/linux-user/main.c
+index dbba8be..836a916 100644
+--- a/linux-user/main.c
++++ b/linux-user/main.c
+@@ -34,6 +34,7 @@
+ #include "tcg.h"
+ #include "qemu-timer.h"
+ #include "envlist.h"
++#include "mlog.h"
+ 
+ #define DEBUG_LOGFILE "/tmp/qemu.log"
+ 
+@@ -3086,6 +3087,7 @@ int main(int argc, char **argv, char **envp)
+     target_set_brk(info->brk);
+     syscall_init();
+     signal_init();
++    mlog_init(); /* *AFTER* loader_exec()!  Binary is loaded but NO accesses logged yet. */
+ 
+ #if defined(CONFIG_USE_GUEST_BASE)
+     /* Now that we've loaded the binary, GUEST_BASE is fixed.  Delay
+diff --git a/linux-user/mlog.c b/linux-user/mlog.c
+new file mode 100644
+index 0000000..5d82922
+--- /dev/null
++++ b/linux-user/mlog.c
+@@ -0,0 +1,417 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <stdint.h>
++#include <unistd.h>
++#include <sys/mman.h>
++#include <errno.h>
++#include "mlog.h"
++#include "cpu-all.h"
++#include "qemu-log.h"
++
++#define MLOG_BITMAP_ADDR 	0x100000000
++#define MLOG_BITMAP_LEN  	0x20000000
++
++#define MLOG_VERBOSE 0
++
++unsigned char *mlog_bitmap;
++
++/*
++  map 4G/8 (512M) ANON but !R!W!X at 0x100000000
++
++  see cpu_signal_handler()
++ */
++
++struct map_info_node {
++	uintptr_t start;
++	uintptr_t end;
++	struct map_info_node *next;
++};
++
++static struct map_info_node *map_list = NULL;
++
++static void mlog_add_map(uintptr_t start, uintptr_t end)
++{
++	/* Keep track of a new page.  First, search list to find adjacent
++	   page we can grow:
++	*/
++	struct map_info_node *n, *new;
++	struct map_info_node **nextp;
++
++	/* Should take a writer lock (nothing's threaded here...); with correct
++	   barriers it's safe to read the list w/o locking (not that anyone does)
++	   but multiple insertions of the same thing/same area are bad.
++	*/
++	n = map_list;
++	nextp = &map_list;
++
++	/* Another case to consider:  Extending an area (merging something onto
++	 * front or back) such that it now joins a neighbour.  E.g.:
++	 *   +-----+-----+-----+  Insert something at '---', x is grown, now touches
++	 *   | x   |-----|  y  |  y.  Need to deallocate one & end up with a single
++	 *   +-----+-----+-----+  region that spans it all.
++	 */
++
++	while (n) {
++		if (n->start > end) {
++			break; /* List is ordered; insert new one before n! */
++		}
++
++		if (n->start == end) {
++			/* Grow region down */
++			n->start = start;
++			return;
++		}
++		if (n->end == start) {
++			/* Grow region up.  This is the case that will hit the case
++			 * described above, FIRST.  If a region is goign to grow into
++			 * a neighbour, it'll do so upwards (as the list is ordered upward).
++			 */
++			if (n->next && n->next->start == end) {
++				/* We now have one region spanning n->start, through
++				 * start/end to n->next->end.
++				 */
++				struct map_info_node *r;
++				r = n->next;
++				n->end = r->end;
++				n->next = r->next;
++				free(r);
++			} else {
++				n->end = end;
++			}
++			return;
++		}
++		nextp = &n->next;
++		n = n->next;
++		/* If we're adding something large so it becomes the last entry,
++		 * we fall out of while() and nextp is set up appropriately (points to a NULL)
++		 */
++	}
++	/* Fail; make new list node & insert. */
++	new = malloc(sizeof(struct map_info_node));
++	if (!new) {
++		fprintf(stderr, "Can't malloc new node in mlog_add_map\n");
++		return;
++	}
++	new->start = start;
++	new->end = end;
++	new->next = *nextp;
++	//wmb();
++	*nextp = new;
++}
++
++static void mlog_split(struct map_info_node *s, uintptr_t addr)
++{
++	struct map_info_node *new;
++
++	new = malloc(sizeof(struct map_info_node));
++	if (!new) {
++		fprintf(stderr, "Can't malloc new node in mlog_split\n");
++		return;
++	}
++	new->start = addr;
++	new->end = s->end;
++	new->next = s->next;
++	s->end = addr;
++	s->next = new;
++
++}
++
++#define PAGE_SIZE 4096 /* Ew! */
++int mlog_handle_fault(unsigned long address)
++{
++	if (address >= MLOG_BITMAP_ADDR && address < MLOG_BITMAP_ADDR+MLOG_BITMAP_LEN) {
++		/* Target page containing this address */
++		uintptr_t pg_addr = address & ~(PAGE_SIZE - 1);
++		mprotect((void*)pg_addr, PAGE_SIZE, PROT_READ | PROT_WRITE);
++		/* Keep track of this page. */
++		mlog_add_map(pg_addr, pg_addr + PAGE_SIZE);
++#if MLOG_VERBOSE > 4
++		fprintf(stderr, "mlog: Fault 0x%lx, page 0x%lx-0x%lx\n", address,
++			pg_addr, pg_addr + PAGE_SIZE);
++#endif
++		return 1;
++	}
++	return 0;
++}
++
++void mlog_init(void)
++{
++	/* Map bitmap */
++	mlog_bitmap = mmap((void*)MLOG_BITMAP_ADDR, MLOG_BITMAP_LEN, 0 /* NO access */,
++			   MAP_PRIVATE | MAP_ANON | MAP_FIXED /* Danger, Will Robinson! */,
++			   -1, 0);
++	if (mlog_bitmap == MAP_FAILED) {
++		fprintf(stderr, "mlog: Can't map bitmap!  (errno %d)\n", errno);
++		exit (1);
++	}
++#if MLOG_VERBOSE > 4
++	fprintf(stderr, "mlog: Init, mapped at %p\n", mlog_bitmap);
++#endif
++}
++
++static char last_path[PATH_MAX] = "";
++static int last_file = -1;
++
++#define TMP_PATH "/tmp/binsize/"
++
++static void mlog_write_chunk(char *path, off_t file_size, struct map_info_node *n,
++			     unsigned long subj_start, unsigned long subj_end,
++			     unsigned long long file_offset, unsigned long len)
++{
++	char tmpl[PATH_MAX];
++	struct chunk_header {
++		uint32_t offset;
++		uint32_t len;
++	};
++	int r;
++	struct chunk_header c;
++
++	if (qemu_loglevel_mask(CPU_LOG_MAPS)) {
++		qemu_log("-- write chunk %lx-%lx as '%s' "
++			 "%lx-%lx offset 0x%llx len 0x%lx\n",
++			 n->start, n->end, path,
++			 subj_start, subj_end,
++			 file_offset, len);
++	}
++	if (strcmp(path, last_path)) {
++		char *s, *d;
++		int i;
++		strcpy(last_path, path);
++
++		if (last_file != -1)
++			close(last_file);
++		strcpy(tmpl, TMP_PATH);
++		/* strcat in 'path', converting / to . */
++		d = &tmpl[strlen(tmpl)];
++		s = path;
++		if (*s == '/')
++			s++;
++		while (*s) {
++			if (*s != '/')
++				*d++ = *s;
++			else
++				*d++ = '.';
++			s++;
++		}
++		*d = '\0';
++		strcat(tmpl, ".XXXXXX");
++		last_file = mkstemp(tmpl);
++		if (last_file == -1) {
++			fprintf(stderr, "Can't open tempfile, tmpl '%s' (errno %d)\n",
++				tmpl, errno);
++			last_path[0] = '\0';
++			return;
++		}
++		fchmod(last_file, 0644);
++		/* Write file header-- pathname, sanitised.
++		 */
++		for (i = 0; i < 248; i++) {
++			tmpl[i] = path[i];
++			if (path[i] == '\0')
++				break;
++		}
++		for (; i < 248; i++) {
++			tmpl[i] = '\0';
++		}
++		*(uint64_t *)&tmpl[248] = file_size;
++		r = write(last_file, tmpl, 256);
++		if (r != 256) {
++			fprintf(stderr, "Short write (%d, errno %d)\n", r, errno);
++			last_path[0] = '\0';
++			close(last_file);
++			last_file = -1;
++			return;
++		}
++	}
++	/* Write a chunk to the open file */
++	c.offset = file_offset;
++	c.len = len/8;  /* Length of bitmap, not orig DSO span */
++	r = write(last_file, &c, sizeof(c));
++	if (r != sizeof(c)) {
++		fprintf(stderr, "Short write (%d, errno %d)\n", r, errno);
++		last_path[0] = '\0';
++		close(last_file);
++		last_file = -1;
++		return;
++	}
++	/* Now write bitmap data for chunk */
++	r = write(last_file, (void*)n->start, len/8);
++	if (r != len/8) {
++		fprintf(stderr, "Short write (%d, errno %d)\n", r, errno);
++		last_path[0] = '\0';
++		close(last_file);
++		last_file = -1;
++		return;
++	}
++}
++
++void mlog_fini(void)
++{
++	/* Only write parts of bitmap that have been accessed! Follow the
++	 * 'chunks' list.
++	 * Also, parse /proc/self/maps to turn these chunks back into DSO names!
++	 */
++
++	/* Ideas for output format:
++	   - Sparse chunked format, keep file sizes small!
++	   - (Each run will be pooing out N files, 1 for each library!)
++
++	   File named /tmp/blah/dsoname.serial; header then chunks.
++	   Header:
++	   0	248bytes	pathname to DSO we represent
++	   248	64b	File size
++	   Chunk format:
++	   0	32b	offset into DSO
++	   4	32b	len (memory span/8)
++	   8	len	len bytes of bitmap
++	   ... more chunks
++
++	   When analysing, filenames give the DSO, assembling all the chunks from
++	   all the files, overlaid/unioned, gives proper bitmap.  (Note DSOs
++	   non-contig!)
++	 */
++	int i = 0;
++	FILE *maps;
++	struct map_info_node *n = map_list;
++
++	if ((maps = fopen("/proc/self/maps", "r")) == NULL) {
++		fprintf(stderr, "Can't open maps :( (errno %d)\n", errno);
++		return;
++	}
++
++	if (qemu_loglevel_mask(CPU_LOG_MAPS)) {
++		qemu_log("mlog_fini:  Logpages mapped:\n");
++		while (n) {
++			qemu_log(" %08lx-%08lx\t(%lx-%lx)\n",
++				 (n->start - MLOG_BITMAP_ADDR)*8,
++				 (n->end - MLOG_BITMAP_ADDR)*8,
++				 n->start, n->end);
++			n = n->next;
++		}
++	}
++
++	/* Walk through /proc/maps and logged areas in sync; if current map is below
++	   logged area, step to next map.  If current logged area is below map, step to
++	   next area.
++
++	   SPLIT logged area (list nodes) if they straddle a DSO boundary!
++
++	   ALSO:  coreutils.mo gets mapped twice.  Same offset etc.
++	   Cope with writing out two chunks overlapping (well, read in & analyse correctly)
++	*/
++	n = map_list;
++	while (1) {
++		char path[PATH_MAX];
++		unsigned long map_start, map_end;
++		unsigned long long offs, inode;
++		unsigned int dev_maj, dev_min;
++		char flags[32];
++		char c1, c2;
++		int r;
++		int in_file;
++		struct stat sb;
++
++		r = fscanf(maps, "%lx-%lx %31s %Lx %x:%x %Lu",
++			   &map_start, &map_end, flags, &offs, &dev_maj, &dev_min, &inode);
++		if (r == EOF)
++			break;
++
++		c1 = fgetc(maps);
++		c2 = fgetc(maps);
++		//printf("r = %d, c1 = %c (%x), c2 = %c (%x)\n", r, c1, c1, c2, c2);
++		if (c1 != ' ') {
++			printf("Lost.\n");
++			break;
++		}
++		if (c2 != '\n') /* Filename */
++		{
++			r = fscanf(maps, "%s\n", path);
++			if (r == EOF)
++				break;
++			in_file = !stat(path, &sb);
++		} else {
++			path[0] = '\0';
++			in_file = 0;
++		}
++
++		if (qemu_loglevel_mask(CPU_LOG_MAPS)) {
++			qemu_log("Map %lx-%lx '%s' (size 0x%lx) offs %llx\n",
++				 map_start, map_end, path, sb.st_size, offs);
++		}
++		if (map_start > 0xffffffff)
++			break;
++
++		while (n) {
++			unsigned long subj_start = (n->start - MLOG_BITMAP_ADDR)*8;
++			unsigned long subj_end = (n->end - MLOG_BITMAP_ADDR)*8;
++			if (qemu_loglevel_mask(CPU_LOG_MAPS))
++				qemu_log("Considering bmap %lx-%lx: ", subj_start, subj_end);
++			/* The chunk could be at a later address than this map */
++			if (subj_start >= map_end) {
++				if (qemu_loglevel_mask(CPU_LOG_MAPS))
++					qemu_log("skip \n");
++				break;  /* Move onto next map */
++			}
++
++			/* Or, it could be before this map-- wind forward */
++			if (subj_end <= map_start) {
++				n = n->next;
++				if (qemu_loglevel_mask(CPU_LOG_MAPS))
++					qemu_log("wind forward\n");
++				continue;
++			}
++			/* Or, it could be contained within this map */
++			if (subj_start >= map_start && subj_end <= map_end) {
++				if (in_file) {
++					// Name this, & write it out later...
++					if (qemu_loglevel_mask(CPU_LOG_MAPS))
++						qemu_log("CONTAINED in '%s'\n", path);
++					mlog_write_chunk(path, sb.st_size,
++							 n, subj_start, subj_end,
++							 subj_start - map_start + offs,
++							 subj_end-subj_start);
++				} else {
++					if (qemu_loglevel_mask(CPU_LOG_MAPS))
++						qemu_log("skip\n");
++				}
++			}
++			/* Could span (part of) this map and the next */
++			if (subj_start < map_start && subj_end > map_start) {
++				/* Starts before the map start; chop off and lose
++				   the bit at the start.  Then go round again,
++				   and reconsider the second part that we've split
++				   off here.
++				*/
++				if (qemu_loglevel_mask(CPU_LOG_MAPS))
++					qemu_log("SplitS (%lx-%lx)\n",
++						 map_start, subj_end);
++				/* The next node will be treated similarly */
++				mlog_split(n, (map_start/8) + MLOG_BITMAP_ADDR);
++			} else if (subj_start < map_end && subj_end > map_end) {
++				/* The next node will be treated similarly */
++				mlog_split(n, (map_end/8) + MLOG_BITMAP_ADDR);
++				/* n->end updated! */
++
++				if (in_file) {
++					if (qemu_loglevel_mask(CPU_LOG_MAPS))
++						qemu_log("SplitE (%lx-%lx in '%s')\n",
++							 subj_start, map_end, path);
++					mlog_write_chunk(path, sb.st_size,
++							 n, subj_start, map_end,
++							 subj_start - map_start + offs,
++							 map_end-subj_start);
++				} else {
++					if (qemu_loglevel_mask(CPU_LOG_MAPS))
++						qemu_log("SplitE (%lx-%lx)\n",
++							 subj_start, map_end);
++				}
++			}
++			n = n->next;
++			i++;
++
++			/* FIXME, calculate offsets from DSO portions correctly, including
++			   'offs' in map */
++		}
++	}
++	close(last_file);
++}
+diff --git a/linux-user/mlog.h b/linux-user/mlog.h
+new file mode 100644
+index 0000000..af9375b
+--- /dev/null
++++ b/linux-user/mlog.h
+@@ -0,0 +1,19 @@
++#ifndef mlog_H
++#define mlog_H
++
++int mlog_handle_fault(unsigned long address);
++void mlog_init(void);
++void mlog_fini(void);
++
++extern unsigned char *mlog_bitmap;
++/* Log an address, touched */
++static inline void mlog_la(void *address, unsigned int len)
++{
++	int i;
++	uintptr_t addr = (uintptr_t)address;
++	if (!mlog_bitmap)
++		return;
++	for (i = 0; i < len; i++)
++		mlog_bitmap[(addr+i)/8] |= (1<<((addr+i) & 7));
++}
++#endif
+diff --git a/linux-user/qemu.h b/linux-user/qemu.h
+index 708021e..0a4158d 100644
+--- a/linux-user/qemu.h
++++ b/linux-user/qemu.h
+@@ -19,6 +19,7 @@
+ #include "target_signal.h"
+ #include "gdbstub.h"
+ #include "qemu-queue.h"
++#include "mlog.h"
+ 
+ #if defined(CONFIG_USE_NPTL)
+ #define THREAD __thread
+@@ -256,6 +257,7 @@ extern unsigned long guest_stack_size;
+ 
+ static inline int access_ok(int type, abi_ulong addr, abi_ulong size)
+ {
++    mlog_la((void*)(uintptr_t)addr, size);
+     return page_check_range((target_ulong)addr, size,
+                             (type == VERIFY_READ) ? PAGE_READ : (PAGE_READ | PAGE_WRITE)) == 0;
+ }
+@@ -267,6 +269,7 @@ static inline int access_ok(int type, abi_ulong addr, abi_ulong size)
+ #define __put_user(x, hptr)\
+ ({\
+     int size = sizeof(*hptr);\
++    mlog_la(hptr, size);\
+     switch(size) {\
+     case 1:\
+         *(uint8_t *)(hptr) = (uint8_t)(typeof(*hptr))(x);\
+@@ -289,6 +292,7 @@ static inline int access_ok(int type, abi_ulong addr, abi_ulong size)
+ #define __get_user(x, hptr) \
+ ({\
+     int size = sizeof(*hptr);\
++    mlog_la(hptr, size);\
+     switch(size) {\
+     case 1:\
+         x = (typeof(*hptr))*(uint8_t *)(hptr);\
+diff --git a/linux-user/syscall.c b/linux-user/syscall.c
+index 0cecdb8..45805d0 100644
+--- a/linux-user/syscall.c
++++ b/linux-user/syscall.c
+@@ -4264,6 +4264,7 @@ abi_long do_syscall(void *cpu_env, int num, abi_long arg1,
+         _mcleanup();
+ #endif
+         gdb_exit(cpu_env, arg1);
++	mlog_fini();
+         _exit(arg1);
+         ret = 0; /* avoid warning */
+         break;
+@@ -4303,6 +4304,10 @@ abi_long do_syscall(void *cpu_env, int num, abi_long arg1,
+         break;
+ #endif
+     case TARGET_NR_close:
++	    if (arg1 == 1 || arg1 == 2) {
++//		    fprintf(stderr, "[Not closing %d]\n",(int) arg1);
++		    break;
++	    }
+         ret = get_errno(close(arg1));
+         break;
+     case TARGET_NR_brk:
+@@ -5889,6 +5894,7 @@ abi_long do_syscall(void *cpu_env, int num, abi_long arg1,
+         _mcleanup();
+ #endif
+         gdb_exit(cpu_env, arg1);
++	mlog_fini();
+         ret = get_errno(exit_group(arg1));
+         break;
+ #endif
+diff --git a/tcg/i386/tcg-target.c b/tcg/i386/tcg-target.c
+index bb19a95..9f7de63 100644
+--- a/tcg/i386/tcg-target.c
++++ b/tcg/i386/tcg-target.c
+@@ -22,6 +22,8 @@
+  * THE SOFTWARE.
+  */
+ 
++#include "mlog.h"
++
+ #ifndef NDEBUG
+ static const char * const tcg_target_reg_names[TCG_TARGET_NB_REGS] = {
+ #if TCG_TARGET_REG_BITS == 64
+@@ -262,6 +264,7 @@ static inline int tcg_target_const_match(tcg_target_long val,
+ #define OPC_MOVL_EvGv	(0x89)		/* stores, more or less */
+ #define OPC_MOVL_GvEv	(0x8b)		/* loads, more or less */
+ #define OPC_MOVL_EvIz	(0xc7)
++#define OPC_BTS_EvGv 	(0xab | P_EXT)
+ #define OPC_MOVL_Iv     (0xb8)
+ #define OPC_MOVSBL	(0xbe | P_EXT)
+ #define OPC_MOVSWL	(0xbf | P_EXT)
+@@ -1055,6 +1058,66 @@ static inline void tcg_out_tlb_load(TCGContext *s, int addrlo_idx,
+ }
+ #endif
+ 
++static void tcg_out_mlog(TCGContext *s, int base, tcg_target_long ofs, int sizeop)
++{
++       const int addr = tcg_target_call_iarg_regs[0];
++       /* const int bit = tcg_target_call_iarg_regs[1]; */
++       const int scratch = tcg_target_call_iarg_regs[2];
++
++       tcg_out_mov(s, TCG_TYPE_I32, addr, base);
++       tcg_out_addi(s, addr, ofs);
++#if 0
++       tcg_out_mov(s, TCG_TYPE_I32, bit, addr);
++       tgen_arithi(s, ARITH_AND, bit, 0x1f, 0);   // bit is bit offset into bitmap
++       tcg_out_shifti(s, SHIFT_SHR, addr, 5);
++       tcg_out_shifti(s, SHIFT_SHL, addr, 2);     // addr is byte offset into bitm
++       tcg_out_movi(s, TCG_TYPE_I64, scratch, mlog_bitmap);
++       tgen_arithr(s, ARITH_ADD + P_REXW, addr, scratch);
++#endif
++
++       /* BTS sets a bit given, it seems, as a direct offset (in reg) from a R/M base.
++	* If M, it does this:  (m >> 3) |= (1<<(m & 3))  -- i.e., woot!
++	*/
++       tcg_out_movi(s, TCG_TYPE_I64, scratch, (tcg_target_long)mlog_bitmap);
++       switch(sizeop & 3) {
++       case 0: // 8
++	       tcg_out_modrm_offset(s, OPC_BTS_EvGv + P_REXW, addr, scratch, 0);
++	       break;
++       case 1: // 16
++	       tcg_out_modrm_offset(s, OPC_BTS_EvGv + P_REXW, addr, scratch, 0);
++	       tcg_out_addi(s, addr, 1);
++	       tcg_out_modrm_offset(s, OPC_BTS_EvGv + P_REXW, addr, scratch, 0);
++	       break;
++       case 2: // 32
++	       tcg_out_modrm_offset(s, OPC_BTS_EvGv + P_REXW, addr, scratch, 0);
++	       tcg_out_addi(s, addr, 1);
++	       tcg_out_modrm_offset(s, OPC_BTS_EvGv + P_REXW, addr, scratch, 0);
++	       tcg_out_addi(s, addr, 1);
++	       tcg_out_modrm_offset(s, OPC_BTS_EvGv + P_REXW, addr, scratch, 0);
++	       tcg_out_addi(s, addr, 1);
++	       tcg_out_modrm_offset(s, OPC_BTS_EvGv + P_REXW, addr, scratch, 0);
++	       break;
++       case 3: // 64
++	       /* yuck */
++	       tcg_out_modrm_offset(s, OPC_BTS_EvGv + P_REXW, addr, scratch, 0);
++	       tcg_out_addi(s, addr, 1);
++	       tcg_out_modrm_offset(s, OPC_BTS_EvGv + P_REXW, addr, scratch, 0);
++	       tcg_out_addi(s, addr, 1);
++	       tcg_out_modrm_offset(s, OPC_BTS_EvGv + P_REXW, addr, scratch, 0);
++	       tcg_out_addi(s, addr, 1);
++	       tcg_out_modrm_offset(s, OPC_BTS_EvGv + P_REXW, addr, scratch, 0);
++	       tcg_out_addi(s, addr, 1);
++	       tcg_out_modrm_offset(s, OPC_BTS_EvGv + P_REXW, addr, scratch, 0);
++	       tcg_out_addi(s, addr, 1);
++	       tcg_out_modrm_offset(s, OPC_BTS_EvGv + P_REXW, addr, scratch, 0);
++	       tcg_out_addi(s, addr, 1);
++	       tcg_out_modrm_offset(s, OPC_BTS_EvGv + P_REXW, addr, scratch, 0);
++	       tcg_out_addi(s, addr, 1);
++	       tcg_out_modrm_offset(s, OPC_BTS_EvGv + P_REXW, addr, scratch, 0);
++	       break;
++       }
++}
++
+ static void tcg_out_qemu_ld_direct(TCGContext *s, int datalo, int datahi,
+                                    int base, tcg_target_long ofs, int sizeop)
+ {
+@@ -1063,6 +1126,7 @@ static void tcg_out_qemu_ld_direct(TCGContext *s, int datalo, int datahi,
+ #else
+     const int bswap = 0;
+ #endif
++    tcg_out_mlog(s, base, ofs, sizeop);
+     switch (sizeop) {
+     case 0:
+         tcg_out_modrm_offset(s, OPC_MOVZBL, datalo, base, ofs);
+@@ -1264,6 +1328,8 @@ static void tcg_out_qemu_st_direct(TCGContext *s, int datalo, int datahi,
+        means that the second argument reg is definitely free here.  */
+     int scratch = tcg_target_call_iarg_regs[1];
+ 
++    tcg_out_mlog(s, base, ofs, sizeop);
++
+     switch (sizeop) {
+     case 0:
+         tcg_out_modrm_offset(s, OPC_MOVB_EvGv + P_REXB_R, datalo, base, ofs);
+-- 
+1.7.5.4
+
