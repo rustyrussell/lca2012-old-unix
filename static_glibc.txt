@@ -1,0 +1,35 @@
+
+ld *is* still smart enough to strip independent/unnecessary .o files
+when linking a .a file.
+
+Ubuntu EGLIBC 2.11.1-0ubuntu7.8 contains 1479 files and .a is 3030680 in size.
+
+"return 42", linked, is 577872 bytes, 515108 stripped.
+
+Why?
+
+_start calls __libc_start_main.
+
+This is in libc-start.o which has a wonderful dependency graph.
+
+There are 313 .o files linked into this graph from libc-start.o
+
+libc is 1479 .o files.  (So 'return 42;' links in 21% of libc, and is 19% of the
+size of the raw libc.a)
+
+Looked at another way, there are only 232 .o files you can link against that
+doesn't pull in other .o files, e.g.:
+
+-  bsd-_setjmp
+-  _exit
+   -- "full exit" requires free, thus malloc!
+-  fpu_control
+-  environ
+-  memcpy
+
+
+Recursion depth 23.. OK
+24 drops off, <200 nodes whereas 23 was 278! and 22 was 287!
+
+- How much is ever executed?
+
