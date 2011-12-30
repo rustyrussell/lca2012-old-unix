@@ -1,0 +1,248 @@
+ ifneq ($(CONFIG_ARCH_EBSA110),y)
+diff --git a/arch/arm/kernel/pmu.c b/arch/arm/kernel/pmu.c
+new file mode 100644
+index 0000000..a8c015d
+--- /dev/null
++++ b/arch/arm/kernel/pmu.c
+@@ -0,0 +1,107 @@
++/*
++ *  linux/arch/arm/kernel/pmu.c
++ *
++ *  Copyright (C) 2009 picoChip Designs Ltd, Jamie Iles
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License version 2 as
++ * published by the Free Software Foundation.
++ *
++ */
++
++#include <linux/cpumask.h>
++#include <linux/err.h>
++#include <linux/interrupt.h>
++#include <linux/kernel.h>
++#include <linux/module.h>
++#include <linux/semaphore.h>
++
++#include <asm/pmu.h>
++
++/*
++ * Define the IRQs for the system. We could use something like a platform
++ * device but that seems fairly heavyweight for this. Also, the performance
++ * counters can't be removed or hotplugged.
++ *
++ * Ordering is important: init_pmu() will use the ordering to set the affinity
++ * to the corresponding core. e.g. the first interrupt will go to cpu 0, the
++ * second goes to cpu 1 etc.
++ */
++static const int irqs[] = {
++#ifdef CONFIG_ARCH_PC3XX
++	IRQ_NPMUIRQ,
++#elif defined(CONFIG_ARCH_OMAP2)
++	3,
++#elif defined(CONFIG_ARCH_BCMRING)
++	IRQ_PMUIRQ,
++#elif defined(CONFIG_MACH_REALVIEW_EB)
++	IRQ_EB11MP_PMU_CPU0,
++	IRQ_EB11MP_PMU_CPU1,
++	IRQ_EB11MP_PMU_CPU2,
++	IRQ_EB11MP_PMU_CPU3,
++#elif defined(CONFIG_ARCH_OMAP3)
++	INT_34XX_BENCH_MPU_EMUL,
++#elif defined(CONFIG_ARCH_IOP32X)
++	IRQ_IOP32X_CORE_PMU,
++#elif defined(CONFIG_ARCH_IOP33X)
++	IRQ_IOP33X_CORE_PMU,
++#elif defined(CONFIG_ARCH_PXA)
++	IRQ_PMU,
++#endif
++};
++
++static const struct pmu_irqs pmu_irqs = {
++	.irqs	    = irqs,
++	.num_irqs   = ARRAY_SIZE(irqs),
++};
++
++static DECLARE_MUTEX(pmu_mutex);
++
++const struct pmu_irqs *
++reserve_pmu(void)
++{
++	int ret = down_trylock(&pmu_mutex) ? -EBUSY : 0;
++
++	return ret ? ERR_PTR(ret) : &pmu_irqs;
++}
++EXPORT_SYMBOL_GPL(reserve_pmu);
++
++int
++release_pmu(const struct pmu_irqs *irqs)
++{
++	if (WARN_ON(irqs != &pmu_irqs))
++		return -EINVAL;
++	up(&pmu_mutex);
++	return 0;
++}
++EXPORT_SYMBOL_GPL(release_pmu);
++
++static int
++set_irq_affinity(int irq,
++		 unsigned int cpu)
++{
++#ifdef CONFIG_SMP
++	int err = irq_set_affinity(irq, cpumask_of(cpu));
++	if (err)
++		pr_warning("unable to set irq affinity (irq=%d, cpu=%u)\n",
++			   irq, cpu);
++	return err;
++#else
++	return 0;
++#endif
++}
++
++int
++init_pmu(void)
++{
++	int i, err = 0;
++
++	for (i = 0; i < pmu_irqs.num_irqs; ++i) {
++		err = set_irq_affinity(pmu_irqs.irqs[i], i);
++		if (err)
++			break;
++	}
++
++	return err;
++}
++EXPORT_SYMBOL_GPL(init_pmu);
+-- 
+1.6.5.4
+
+
+_______________________________________________
+linux-arm-kernel mailing list
+linux-arm-kernel@lists.infradead.org
+http://lists.infradead.org/mailman/listinfo/linux-arm-kernel
+
+From moo
+Subject: Thingy
+really don't think wearing spandex to a wedding is appropriate, but if needs be
+
+From - Thu Jan 13 12:33:08 2011
+X-Mozilla-Status: 0001
+X-Mozilla-Status2: 00000000
+Return-path: <linux-arm-kernel-bounces+matt=axio.ms@lists.infradead.org>
+X-Spam-Checker-Version: SpamAssassin 3.1.9 (2007-02-13) on
+	topper.vs.topper.me.uk
+X-Spam-Level: 
+X-Spam-Status: No, score=0.0 required=5.0 tests=none autolearn=ham
+	version=3.1.9
+Envelope-to: matt@axio.ms
+Delivery-date: Mon, 04 Jan 2010 10:49:02 +0000
+Received: from bombadil.infradead.org ([18.85.46.34])
+	by topper.vs.topper.me.uk with esmtps (TLSv1:AES256-SHA:256)
+	(Exim 4.66)
+	(envelope-from <linux-arm-kernel-bounces+matt=axio.ms@lists.infradead.org>)
+	id 1NRkUd-0006gM-J9
+	for matt@axio.ms; Mon, 04 Jan 2010 10:49:02 +0000
+Received: from localhost ([::1] helo=bombadil.infradead.org)
+	by bombadil.infradead.org with esmtp (Exim 4.69 #1 (Red Hat Linux))
+	id 1NRkU7-0006aD-MR; Mon, 04 Jan 2010 10:48:27 +0000
+Received: from [82.111.145.34] (helo=thurne.picochip.com)
+	by bombadil.infradead.org with esmtps (Exim 4.69 #1 (Red Hat Linux))
+	id 1NRkTz-0006V9-BE for linux-arm-kernel@lists.infradead.org;
+	Mon, 04 Jan 2010 10:48:24 +0000
+Received: from localhost.localdomain (wear.picochip.com [172.17.1.47])
+	(authenticated bits=0)
+	by thurne.picochip.com (8.13.8/8.13.8) with ESMTP id o04AlRsJ016788;
+	Mon, 4 Jan 2010 10:47:32 GMT
+From: Jamie Iles <jamie.iles@picochip.com>
+To: linux-arm-kernel@lists.infradead.org
+Subject: [PATCH 2/5] arm/oprofile: reserve the PMU when starting
+Date: Mon,  4 Jan 2010 10:48:39 +0000
+Message-Id: <1262602122-10373-3-git-send-email-jamie.iles@picochip.com>
+X-Mailer: git-send-email 1.6.5.4
+In-Reply-To: <1262602122-10373-2-git-send-email-jamie.iles@picochip.com>
+References: <1262602122-10373-1-git-send-email-jamie.iles@picochip.com>
+	<1262602122-10373-2-git-send-email-jamie.iles@picochip.com>
+X-Greylist: Sender succeeded SMTP AUTH authentication, not delayed by
+	milter-greylist-3.0 (thurne.picochip.com [172.17.0.105]);
+	Mon, 04 Jan 2010 10:47:35 +0000 (GMT)
+X-Virus-Scanned: clamav-milter 0.95.3 at thurne.picochip.com
+X-Virus-Status: Clean
+X-CRM114-Version: 20090807-BlameThorstenAndJenny ( TRE 0.7.6 (BSD) )
+	MR-646709E3 
+X-CRM114-CacheID: sfid-20100104_054819_704488_352BEE56 
+X-CRM114-Status: GOOD (  24.34  )
+Cc: Jamie Iles <jamie.iles@picochip.com>, Will Deacon <will.deacon@arm.com>,
+	Jean Pihet <jpihet@mvista.com>
+X-BeenThere: linux-arm-kernel@lists.infradead.org
+X-Mailman-Version: 2.1.12
+Precedence: list
+List-Id: <linux-arm-kernel.lists.infradead.org>
+List-Unsubscribe: <http://lists.infradead.org/mailman/options/linux-arm-kernel>, 
+	<mailto:linux-arm-kernel-request@lists.infradead.org?subject=unsubscribe>
+List-Archive: <http://lists.infradead.org/pipermail/linux-arm-kernel/>
+List-Post: <mailto:linux-arm-kernel@lists.infradead.org>
+List-Help: <mailto:linux-arm-kernel-request@lists.infradead.org?subject=help>
+List-Subscribe: <http://lists.infradead.org/mailman/listinfo/linux-arm-kernel>, 
+	<mailto:linux-arm-kernel-request@lists.infradead.org?subject=subscribe>
+MIME-Version: 1.0
+Content-Type: text/plain; charset="us-ascii"
+Content-Transfer-Encoding: 7bit
+Sender: linux-arm-kernel-bounces@lists.infradead.org
+Errors-To: linux-arm-kernel-bounces+matt=axio.ms@lists.infradead.org
+
+Make sure that we have access to the performance counters and
+that they aren't being used by perf events or anything else.
+
+Cc: Will Deacon <will.deacon@arm.com>
+Cc: Jean Pihet <jpihet@mvista.com>
+Signed-off-by: Jamie Iles <jamie.iles@picochip.com>
+---
+ arch/arm/oprofile/op_model_arm11_core.c |    4 +-
+ arch/arm/oprofile/op_model_arm11_core.h |    4 +-
+ arch/arm/oprofile/op_model_mpcore.c     |   42 ++++++++++++++++--------------
+ arch/arm/oprofile/op_model_v6.c         |   30 ++++++++++++++--------
+ arch/arm/oprofile/op_model_v7.c         |   30 ++++++++++++++--------
+ arch/arm/oprofile/op_model_v7.h         |    4 +-
+ arch/arm/oprofile/op_model_xscale.c     |   35 ++++++++++++++-----------
+ 7 files changed, 85 insertions(+), 64 deletions(-)
+
+diff --git a/arch/arm/oprofile/op_model_arm11_core.c b/arch/arm/oprofile/op_model_arm11_core.c
+index ad80752..ef3e265 100644
+--- a/arch/arm/oprofile/op_model_arm11_core.c
++++ b/arch/arm/oprofile/op_model_arm11_core.c
+@@ -132,7 +132,7 @@ static irqreturn_t arm11_pmu_interrupt(int irq, void *arg)
+ 	return IRQ_HANDLED;
+ }
+ 
+-int arm11_request_interrupts(int *irqs, int nr)
++int arm11_request_interrupts(const int *irqs, int nr)
+ {
+ 	unsigned int i;
+ 	int ret = 0;
+@@ -153,7 +153,7 @@ int arm11_request_interrupts(int *irqs, int nr)
+ 	return ret;
+ }
+ 
+-void arm11_release_interrupts(int *irqs, int nr)
++void arm11_release_interrupts(const int *irqs, int nr)
+ {
+ 	unsigned int i;
+ 
+diff --git a/arch/arm/oprofile/op_model_arm11_core.h b/arch/arm/oprofile/op_model_arm11_core.h
+index 6f8538e..1902b99 100644
+--- a/arch/arm/oprofile/op_model_arm11_core.h
++++ b/arch/arm/oprofile/op_model_arm11_core.h
+@@ -39,7 +39,7 @@
+ int arm11_setup_pmu(void);
+ int arm11_start_pmu(void);
+ int arm11_stop_pmu(void);
+-int arm11_request_interrupts(int *, int);
+-void arm11_release_interrupts(int *, int);
++int arm11_request_interrupts(const int *, int);
++void arm11_release_interrupts(const int *, int);
+ 
+ #endif
+diff --git a/arch/arm/oprofile/op_model_mpcore.c b/arch/arm/oprofile/op_model_mpcore.c
+index 4ce0f98..f73ce87 100644
+--- a/arch/arm/oprofile/op_model_mpcore.c
+fff
