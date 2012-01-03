@@ -1,6 +1,6 @@
 #include <sys/types.h>
 #include <fcntl.h>
-#include <dirent.h>
+#include <sys/syscall.h>
 
 /*
  * list file or directory
@@ -55,16 +55,15 @@ int	lastuid	= -1;
 char	tbuf[16];
 int	tblocks;
 int	statreq;
-struct lbuf *firstp;
-int	num;
-int	max;
+struct	lbuf	*lastp;
+struct	lbuf	*rlastp;
 char	*dotp = ".";
 
 int printf(const char *format, ...);
 extern void *stdout;
 int fflush(void *stream);
 char *ctime(const time_t *timep);
-void *realloc(void *ptr, size_t size);
+void *sbrk(long increment);
 
 /* part of V6 standard library. */
 static char *locv(int hi, int lo)
@@ -138,13 +137,12 @@ char **argv;
 {
 	int i, j;
 	register struct lbuf *ep, *ep1;
-	int snum;
+	register struct lbuf *slastp, *firstp;
 	struct lbuf lb;
 	int t;
 	int compar();
 
-	num = max = 0;
-	firstp = 0;
+	firstp = rlastp = lastp = sbrk(0);
 	fout = dup(1);
 	time(&lb.lmtime);
 	year = (lb.lmtime >> 16) - 245; /* 6 months ago */
@@ -222,20 +220,19 @@ char **argv;
 		((struct lbufx *)ep)->namep = *argv;
 		ep->lflags |= ISARG;
 	}
-	qsort(firstp, num, sizeof *firstp, compar);
-	snum = num;
-	for (i = 0; i < snum; i++) {
-		ep = firstp + i;
+	qsort(firstp, lastp - firstp, sizeof *lastp, compar);
+	slastp = lastp;
+	for (ep = firstp; ep<slastp; ep++) {
 		if (ep->lflags&DIRX && dflg==0 || fflg) {
 			if (argc>1)
 				printf("\n%s:\n", ((struct lbufx *)ep)->namep);
-			num = snum;
+			lastp = slastp;
 			readdir_(((struct lbufx *)ep)->namep);
 			if (fflg==0)
-				qsort(firstp+snum,num - snum,sizeof *firstp,compar);
+				qsort(slastp,lastp - slastp,sizeof *lastp,compar);
 			if (statreq)
 				printf("total %d\n", tblocks);
-			for (ep1=firstp+snum; ep1<firstp+num; ep1++)
+			for (ep1=slastp; ep1<lastp; ep1++)
 				pentry(ep1);
 		} else 
 			pentry(ep);
@@ -421,30 +418,45 @@ char *dir;
 	}
 	close(inf.fdes);
 #else
-	struct dirent *dirp;
-	register struct lbuf *ep;
+	struct dentry {
+		unsigned long	dinode;
+		unsigned long	doff;
+		unsigned short	dreclen;
+		char		dname[1];
+	} *p;
 	register int j;
-	DIR *d;
+	register struct lbuf *ep;
 
-	d = opendir(dir);
-	if (!d) {
+	inf.fdes = open(dir, 0);
+	if (inf.fdes < 0) {
 		printf("%s unreadable\n", dir);
 		return;
 	}
 	tblocks = 0;
 	for(;;) {
-		dirp = readdir(d);
-		if (!dirp)
+		int n;
+#ifdef __dietlibc__
+		n = getdents(inf.fdes, &inf.buff, sizeof(inf.buff));
+#else
+		n = syscall(SYS_getdents, inf.fdes, &inf.buff, sizeof(inf.buff));
+#endif		
+		if (n <= 0)
 			break;
-		if (dirp->d_ino == 0
-		 || aflg==0 && dirp->d_name[0]=='.')
-			continue;
-		ep = gstat(makename(dir, dirp->d_name), 0);
-		if (ep->lnum != -1)
-			ep->lnum = dirp->d_ino;
-		for (j=0; j<256; j++)
-			ep->lname[j] = dirp->d_name[j];
+
+		for (p = (struct dentry *)inf.buff;
+		     (char *)p < inf.buff + n;
+		     p = (void *)p + p->dreclen) {
+			if (p->dinode==0
+			    || aflg==0 && p->dname[0]=='.')
+				continue;
+			ep = gstat(makename(dir, p->dname), 0);
+			if (ep->lnum != -1)
+				ep->lnum = p->dinode;
+			for (j=0; j<p->dreclen - 2 - (p->dname - (char*)p); j++)
+				ep->lname[j] = p->dname[j];
+		}
 	}
+	close(inf.fdes);
 #endif	
 }
 
@@ -454,12 +466,11 @@ char *file;
 	struct stat statb;
 	register struct lbuf *rep;
 
-	if (num+1 >= max) {
-		max = num + 8;
-		firstp = realloc(firstp, max * sizeof(*firstp));
+	if (lastp+1 >= rlastp) {
+		rlastp = sbrk(512) + 512;
 	}
-	rep = firstp + num;
-	num++;
+	rep = lastp;
+	lastp++;
 	rep->lflags = 0;
 	rep->lnum = 0;
 	if (argfl || statreq) {
@@ -469,7 +480,7 @@ char *file;
 			statb.st_size = 0;
 			statb.st_mode = 0;
 			if (argfl) {
-				num--;
+				lastp--;
 				return(0);
 			}
 		}
