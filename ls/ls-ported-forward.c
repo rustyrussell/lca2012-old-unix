@@ -55,15 +55,16 @@ int	lastuid	= -1;
 char	tbuf[16];
 int	tblocks;
 int	statreq;
-struct	lbuf	*lastp;
-struct	lbuf	*rlastp;
+struct lbuf *firstp;
+int	num;
+int	max;
 char	*dotp = ".";
 
 int printf(const char *format, ...);
 extern void *stdout;
 int fflush(void *stream);
 char *ctime(const time_t *timep);
-void *sbrk(long increment);
+void *realloc(void *ptr, size_t size);
 
 /* part of V6 standard library. */
 static char *locv(int hi, int lo)
@@ -137,12 +138,13 @@ char **argv;
 {
 	int i, j;
 	register struct lbuf *ep, *ep1;
-	register struct lbuf *slastp, *firstp;
+	int snum;
 	struct lbuf lb;
 	int t;
 	int compar();
 
-	firstp = rlastp = lastp = sbrk(0);
+	num = max = 0;
+	firstp = 0;
 	fout = dup(1);
 	time(&lb.lmtime);
 	year = (lb.lmtime >> 16) - 245; /* 6 months ago */
@@ -220,19 +222,20 @@ char **argv;
 		((struct lbufx *)ep)->namep = *argv;
 		ep->lflags |= ISARG;
 	}
-	qsort(firstp, lastp - firstp, sizeof *lastp, compar);
-	slastp = lastp;
-	for (ep = firstp; ep<slastp; ep++) {
+	qsort(firstp, num, sizeof *firstp, compar);
+	snum = num;
+	for (i = 0; i < snum; i++) {
+		ep = firstp + i;
 		if (ep->lflags&DIRX && dflg==0 || fflg) {
 			if (argc>1)
 				printf("\n%s:\n", ((struct lbufx *)ep)->namep);
-			lastp = slastp;
+			num = snum;
 			readdir_(((struct lbufx *)ep)->namep);
 			if (fflg==0)
-				qsort(slastp,lastp - slastp,sizeof *lastp,compar);
+				qsort(firstp+snum,num - snum,sizeof *firstp,compar);
 			if (statreq)
 				printf("total %d\n", tblocks);
-			for (ep1=slastp; ep1<lastp; ep1++)
+			for (ep1=firstp+snum; ep1<firstp+num; ep1++)
 				pentry(ep1);
 		} else 
 			pentry(ep);
@@ -451,11 +454,12 @@ char *file;
 	struct stat statb;
 	register struct lbuf *rep;
 
-	if (lastp+1 >= rlastp) {
-		rlastp = sbrk(512) + 512;
+	if (num+1 >= max) {
+		max = num + 8;
+		firstp = realloc(firstp, max * sizeof(*firstp));
 	}
-	rep = lastp;
-	lastp++;
+	rep = firstp + num;
+	num++;
 	rep->lflags = 0;
 	rep->lnum = 0;
 	if (argfl || statreq) {
@@ -465,7 +469,7 @@ char *file;
 			statb.st_size = 0;
 			statb.st_mode = 0;
 			if (argfl) {
-				lastp--;
+				num--;
 				return(0);
 			}
 		}
