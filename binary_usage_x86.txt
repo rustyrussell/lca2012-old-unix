@@ -1,0 +1,21 @@
+Binary use measurement with qemu-user
+=====================================
+
+The portions of the ELF header used to load the binary are currently not
+counted.
+
+For a simple static-linked i386 ELF there's about 1192 bytes of ELF header (plus
+string table on top).
+
+
+---
+		ELF size	Usage		Page usage
+
+c_tiny		577872		9878 (1.71%)	27 (110592 total of which 100714 unused)
+c_tiny_s	515108		9844 (1.91%)	27 (110592 / 100695 unused)
+
+
+asmutils doesn't seem to play nice:
+	 /home/matt/asmutils-0.18/src/grep: Invalid ELF image for this architecture
+
+Try LD_BIND_NOW.
