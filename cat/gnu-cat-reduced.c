@@ -86,6 +86,10 @@ static char const *infile;
 /* Descriptor on which input file is open.  */
 static int input_desc;
 
+#define PAGE_SIZE 4096
+/* The input buffer.  */
+static char inbuf[4096 + PAGE_SIZE - 1];
+
 /* Compute the next line number.  */
 
 /* Read(write) up to COUNT bytes at BUF from(to) descriptor FD, retrying if
@@ -167,21 +171,6 @@ full_write (int fd, const void *buf, size_t count)
 
 #define SAFE_READ_ERROR ((size_t) -1)
 
-void
-xalloc_die (void)
-{
-  abort();
-}
-
-void *
-xmalloc (size_t n)
-{
-  void *p = malloc (n);
-  if (!p && n != 0)
-    xalloc_die ();
-  return p;
-}
-
 static void *
 ptr_align (void const *ptr, size_t alignment)
 {
@@ -241,11 +230,6 @@ main (int argc, char **argv)
 
   /* Optimal size of i/o operations of input.  */
   size_t insize;
-
-  size_t page_size = getpagesize ();
-
-  /* Pointer to the input buffer.  */
-  char *inbuf;
 
   bool ok = true;
 
@@ -310,11 +294,9 @@ main (int argc, char **argv)
       insize = io_blksize (stat_buf);
 
           insize = MAX (insize, outsize);
-          inbuf = xmalloc (insize + page_size - 1);
-
-          ok &= simple_cat (ptr_align (inbuf, page_size), insize);
-
-      free (inbuf);
+	  if (insize > 4096)
+	    insize = 4096;
+          ok &= simple_cat (ptr_align (inbuf, PAGE_SIZE), insize);
 
     contin:
       if (!STREQ (infile, "-") && close (input_desc) < 0)
