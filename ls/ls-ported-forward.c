@@ -553,3 +553,4 @@ struct lbuf *ap1, *ap2;
 			return(rflg*j);
 	return(0);
 }
+

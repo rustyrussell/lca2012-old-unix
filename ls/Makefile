@@ -1,4 +1,4 @@
-CFLAGS=-Os
+CFLAGS=-O2
 LDFLAGS=-s
 LDLIBS=-lrt
 
