@@ -1,8 +1,33 @@
+From 828b0863a429906428d9535b0e1eb94ca713f5b8 Mon Sep 17 00:00:00 2001
+From: Matt Evans <matt@ozlabs.org>
+Date: Mon, 28 Nov 2011 11:36:59 +1100
+Subject: [PATCH] Log memory accesses to a bitmap
+
+Bitmap written out to a file, and 'anbin.c' analyses this to provide
+stats on how much of the binary is ever touched.
+
+Hack in log: clear uninteresting bits so they don't appear in rounded output
+(and round bytes written to file, correctly).
+---
+ Makefile  |   10 +++-
+ anbin.c   |   75 +++++++++++++++++++++++++
+ aout.c    |   22 +++++++-
+ defines.h |   39 ++++++++------
+ ea.c      |    4 +-
+ fp.c      |   43 +++++++--------
+ log.c     |  181 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ log.h     |   11 ++++
+ main.c    |    9 +++-
+ 9 files changed, 344 insertions(+), 50 deletions(-)
+ create mode 100644 anbin.c
+ create mode 100644 log.c
+ create mode 100644 log.h
+
 diff --git a/Makefile b/Makefile
-index fc1d7a6..8fe8fc5 100644
+index fc1d7a6..51e16c3 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -30,10 +30,11 @@ VERSION= apout2.3beta1
+@@ -30,12 +30,13 @@ VERSION= apout2.3beta1
  SRCS=	cpu.c aout.c aout.h branch.c double.c ea.c itab.c main.c ke11a.c \
  	single.c fp.c v7trap.c bsdtrap.c defines.h v7trap.h debug.c \
  	bsdtrap.h bsd_ioctl.c bsd_signal.c magic.c v1trap.c v1trap.h \
@@ -14,14 +39,27 @@ index fc1d7a6..8fe8fc5 100644
 -	v7trap.o
 +	v7trap.o log.o
  
- apout: $(OBJS)
+-apout: $(OBJS)
++apout: $(OBJS) anbin
  	cc $(LDFLAGS) $(OBJS) -o apout $(LIBS)
+ 
+ install: apout
+@@ -58,6 +59,9 @@ disttar: clean apout.0
+ 	chown -R wkt $(VERSION)
+ 	tar vzcf $(VERSION).tar.gz $(VERSION)
+ 
++anbin:	anbin.c
++	cc $(LDFLAGS) anbin.c -o anbin
++
+ # Dependencies for object files
+ aout.o: aout.c defines.h aout.h Makefile
+ branch.o: branch.c defines.h Makefile
 diff --git a/anbin.c b/anbin.c
 new file mode 100644
-index 0000000..b920f1f
+index 0000000..a5b96c7
 --- /dev/null
 +++ b/anbin.c
-@@ -0,0 +1,74 @@
+@@ -0,0 +1,75 @@
 +#include <sys/types.h>
 +#include <sys/stat.h>
 +#include <fcntl.h>
@@ -62,7 +100,7 @@ index 0000000..b920f1f
 +		return 1;
 +	}
 +	memset(the_data, 0, len);
-+	
++
 +	for (curarg = 1; curarg < argc; curarg++) {
 +		if ((fd = open(argv[curarg], O_RDONLY)) < 0) {
 +			printf("Can't open %s! (%d)\n", argv[curarg], errno);
@@ -95,9 +133,10 @@ index 0000000..b920f1f
 +	}
 +	printf("Files %d, %d bytes, %d of which touched.  (%.2f%%)\n",
 +	       curarg, len*8, setbits, 100.0*(float)setbits/(float)(len*8));
++	return 0;
 +}
 diff --git a/aout.c b/aout.c
-index d2d3dd0..18f58f6 100644
+index d2d3dd0..b902803 100644
 --- a/aout.c
 +++ b/aout.c
 @@ -8,7 +8,7 @@
@@ -120,13 +159,13 @@ index d2d3dd0..18f58f6 100644
 +  }
  #endif
  
-+  printf("ibase %p (ispace %p), dbase %p (dspace %p),\n"
-+	 " bbase %p, e.a_text 0x%x, e.a_data 0x%x, e.a_bss 0x%x\n",
-+	 ibase, ispace, dbase, dspace, bbase, e.a_text, e.a_data, e.a_bss);
++  LogDebug((stderr, "ibase %p (ispace %p), dbase %p (dspace %p),\n"
++		    " bbase %p, e.a_text 0x%x, e.a_data 0x%x, e.a_bss 0x%x\n",
++		    ibase, ispace, dbase, dspace, bbase, e.a_text, e.a_data, e.a_bss));
 +
-+  printf("Text loaded at ispace+0x%x, data at dspace+0x%x,\n"
-+	 " bss at dspace+0x%x\n",
-+	 ibase-ispace, dbase-dspace, bbase-dspace);
++  LogDebug((stderr, "Text loaded at ispace+0x%x, data at dspace+0x%x, "
++		    "bss at dspace+0x%x\n",
++		    ibase-ispace, dbase-dspace, bbase-dspace));
 +
 +  /* Keep track of interesting ranges; text start, end and data start, end.
 +     Do not handle (BSD) split I+D spaces yet.
@@ -146,7 +185,7 @@ index d2d3dd0..18f58f6 100644
    (void) fclose(zin);
    sim_init();
 diff --git a/defines.h b/defines.h
-index b0d8119..f02c954 100644
+index b0d8119..05ec6b4 100644
 --- a/defines.h
 +++ b/defines.h
 @@ -13,6 +13,8 @@
@@ -158,7 +197,31 @@ index b0d8119..f02c954 100644
  /* Defines for ifdef'd code -- define them in the Makefile */
  
  /* #define DEBUG			adds in debugging code */
-@@ -344,38 +346,38 @@ extern u_int16_t *adptr;
+@@ -101,11 +103,13 @@ typedef unsigned long u_int32_t;
+ # define InstDebug(x) if (inst_debug) (void)fprintf x
+ # define JsrDebug(x)  if (jsr_debug)  (void)fprintf x
+ # define FpDebug(x)   if (fp_debug)   (void)fprintf x
++# define LogDebug(x)  if (log_debug)  (void)fprintf x
+ #else
+ # define TrapDebug(x)
+ # define InstDebug(x)
+ # define JsrDebug(x)
+ # define FpDebug(x)
++# define LogDebug(x)
+ #endif
+ 
+ 				/* Defines for -DSTREAM_BUFFERING */
+@@ -203,7 +207,8 @@ extern u_int8_t current_ov;	/* Current overlay number */
+ extern int inst_debug,		/* Print a line before each instruction */
+     trap_debug,			/* Print details of each trap */
+     jsr_debug,			/* Print out each jsr */
+-    fp_debug;			/* Print out each floating-point instruction */
++    fp_debug,			/* Print out each floating-point instruction */
++    log_debug;
+ extern FILE *dbg_file;		/* Debugging output file */
+ extern char *progname;		/* The program's name - used in debugging */
+ #endif
+@@ -344,38 +349,38 @@ extern u_int16_t *adptr;
  #ifndef EMUV1
  /* lli_word() - Load a word from the given ispace logical address. */
  #define lli_word(addr, word) \
@@ -205,7 +268,7 @@ index b0d8119..f02c954 100644
  #endif
  #else
  				/* These versions of the macros are required */
-@@ -388,14 +390,14 @@ extern u_int16_t *adptr;
+@@ -388,14 +393,14 @@ extern u_int16_t *adptr;
  #define lli_word(addr, word) \
  	{ if ((Binary<IS_V3) && (addr>=KE11LO) && (addr<=KE11HI)) {	\
  		word= kell_word(addr);					\
@@ -222,7 +285,7 @@ index b0d8119..f02c954 100644
  	}
  
  /* sl_word() - Store a word at the given logical address. */
-@@ -404,25 +406,25 @@ extern u_int16_t *adptr;
+@@ -404,25 +409,25 @@ extern u_int16_t *adptr;
  	{ if ((u_int16_t)addr < dwrite_base) seg_fault(); \
  	  if ((Binary<IS_V3) && (addr>=KE11LO) && (addr<=KE11HI)) {	\
  		kesl_word(addr, word);					\
@@ -252,7 +315,7 @@ index b0d8119..f02c954 100644
  	}
  
  /* sl_byte() - Store a byte at the given logical address. */
-@@ -431,13 +433,13 @@ extern u_int16_t *adptr;
+@@ -431,13 +436,13 @@ extern u_int16_t *adptr;
  	{ if (addr < dwrite_base) seg_fault(); \
  	  if ((Binary<IS_V3) && (addr>=KE11LO) && (addr<=KE11HI)) {	\
  		kesl_byte(addr, byte);					\
@@ -451,10 +514,10 @@ index b3bc85d..b7a706d 100644
  load_long(void)
 diff --git a/log.c b/log.c
 new file mode 100644
-index 0000000..0999b19
+index 0000000..220f0db
 --- /dev/null
 +++ b/log.c
-@@ -0,0 +1,178 @@
+@@ -0,0 +1,181 @@
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <unistd.h>
@@ -497,7 +560,7 @@ index 0000000..0999b19
 +	spans[1].start 	= d_start;
 +	spans[1].end 	= d_start + d_size;
 +#if 0
-+	printf("0: %x-%x / 1: %x-%x\n", spans[0].start, spans[0].end,
++	printf("0: 0x%x-0x%x / 1: 0x%x-0x%x\n", spans[0].start, spans[0].end,
 +	       spans[1].start, spans[1].end);
 +#endif
 +}
@@ -523,8 +586,10 @@ index 0000000..0999b19
 +{
 +	int is, ds, ts, i;
 +	int interesting_accesses = 0;
++#ifdef WE_CARE_ABOUT_I_AND_D_SEPARATE
 +	int interesting_inst = 0;
 +	int interesting_data = 0;
++#endif
 +	unsigned int totalbin;
 +	char temp_path[PATH_MAX]; /* Enormous! */
 +	struct stat sb;
@@ -578,18 +643,19 @@ index 0000000..0999b19
 +		}
 +	}
 +
-+#ifdef WE_CARE_ABOUT_I_AND_D_SEPARATE
-+	printf("Log of %s stats:  I accessed %d, D accessed %d, total %d \n"
-+	       " Interesting I %d, D %d, total %d\n", bin_name,
-+	       is, ds, ts, interesting_inst, interesting_data, interesting_accesses);
-+#else
-+	printf("Log of %s stats:  %d uninteresting bytes accessed, %d interesting\n", bin_name,
-+	       ts, interesting_accesses);
-+#endif
-+
 +	totalbin = (spans[0].end - spans[0].start) + (spans[1].end - spans[1].start);
-+	printf("[Total loaded from file = %d ; interesting accesses %d =  %.2f%%]\n",
-+	       totalbin, interesting_accesses, 100.0*(float)interesting_accesses/(float)totalbin);
++
++#ifdef WE_CARE_ABOUT_I_AND_D_SEPARATE
++	LogDebug((stderr, "Log of %s stats:  I accessed %d, D accessed %d, total %d \n"
++			  " Interesting I %d, D %d, total %d\n", bin_name,
++			  is, ds, ts, interesting_inst, interesting_data, interesting_accesses));
++#else
++	LogDebug((stderr, "Log of %s stats:  %d uninteresting bytes accessed, %d interesting\n", bin_name,
++			  ts, interesting_accesses));
++#endif
++	LogDebug((stderr, "[Total loaded from file = %d ; interesting accesses %d =  %.2f%%]\n",
++			  totalbin, interesting_accesses,
++			  100.0*(float)interesting_accesses/(float)totalbin));
 +
 +	/* Save bitmaps for later perusal/unionning */
 +
@@ -651,10 +717,39 @@ index 0000000..f3ed217
 +
 +#endif
 diff --git a/main.c b/main.c
-index cd52f6e..38e45e5 100644
+index cd52f6e..549a787 100644
 --- a/main.c
 +++ b/main.c
-@@ -100,6 +100,7 @@ main(int argc, char **argv)
+@@ -28,7 +28,9 @@ char *apout_root=NULL;		/* Root dir for simulated a.out */
+ int inst_debug= 0,		/* Print a line before each instruction */
+     trap_debug= 0,		/* Print details of each trap */
+     jsr_debug=	0,		/* Print out each jsr */
+-    fp_debug=	0;		/* Print out each floating-point instruction */
++    fp_debug=	0,		/* Print out each floating-point instruction */
++    log_debug=  0;
++
+ FILE *dbg_file = NULL;		/* Debugging output file */
+ char *progname = NULL;		/* The program's name - used in debugging */
+ #endif
+@@ -37,7 +39,7 @@ void usage()
+ {
+   fprintf(stderr, "Usage: apout");
+ #ifdef DEBUG
+-  fprintf(stderr, " [-inst] [-trap] [-jsr] [-fp]");
++  fprintf(stderr, " [-inst] [-trap] [-jsr] [-fp] [-log]");
+ #endif
+   fprintf(stderr, " pdp11_binary\n");
+   exit(1);
+@@ -67,6 +69,8 @@ main(int argc, char **argv)
+ 		{ jsr_debug = 1; argc--; argv++; continue; }
+       if (!strcmp(argv[1], "-fp"))
+ 		{ fp_debug = 1; argc--; argv++; continue; }
++      if (!strcmp(argv[1], "-log"))
++		{ log_debug = 1; argc--; argv++; continue; }
+       break;
+     }
+     if (inst_debug|trap_debug|jsr_debug|fp_debug)
+@@ -100,6 +104,7 @@ main(int argc, char **argv)
  	exit(1);
      }
  
@@ -662,3 +757,6 @@ index cd52f6e..38e45e5 100644
  				/* Other emulated systems (RT-11) can go here */
  
      run();			/* Now run the binary */
+-- 
+1.7.0.4
+
