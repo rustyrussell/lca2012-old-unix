@@ -1,0 +1,47 @@
+Options tested for ls/cat/grep analysis
+=======================================
+
+These are assumed to be in the 'standard-files' directory, having made the
+files/devs using the scripts in there.
+
+ls:
+
+ls -ld
+ls -asg dir2 m*
+ls -lur . nonexistentfile
+ls -tui
+ls -f
+
+# For max V6 coverage, want an unreadable directory (chmod 000) and ls -lf that dir.
+# Also, files that are very old.  (See make_dirs_and_files.sh)
+
+# Other common GNU options, e.g. -R, --color?
+
+
+cat:
+
+cat mbox
+cat nonexistentfile
+cat mbox make_devices.sh
+echo | cat mbox make_devices.sh -
+cat make_devices.sh - <&-
+
+
+grep:
+
+grep foo nonexistentfile
+grep -vn nod make_devices.sh
+grep -c nod make_devices.sh
+
+# More interesting regexps:
+grep "thing.*thing[^f][abc]*$" mbox
+
+grep "affinity$" mbox
+
+grep "spa.*din[^z][a-z, ]*" mbox
+
+
+
+# Commonly-used things in GNU-land:
+
+grep -A 1 -B 1 -r -i -H spandex dir* m*

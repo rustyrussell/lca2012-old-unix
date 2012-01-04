@@ -1,25 +1,3 @@
-From 05fbfd75867477799945f6ee285af933a33b0144 Mon Sep 17 00:00:00 2001
-From: Matt Evans <matt@ozlabs.org>
-Date: Mon, 28 Nov 2011 11:36:59 +1100
-Subject: [PATCH] Log memory accesses to a bitmap
-
-Bitmap written out to a file, and 'anbin.c' analyses this to provide
-stats on how much of the binary is ever touched.
----
- Makefile  |    5 +-
- anbin.c   |   74 ++++++++++++++++++++++++++++++
- aout.c    |   22 ++++++++-
- defines.h |   34 +++++++-------
- ea.c      |    4 +-
- fp.c      |   43 ++++++++---------
- log.c     |  150 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
- log.h     |   11 +++++
- main.c    |    1 +
- 9 files changed, 298 insertions(+), 46 deletions(-)
- create mode 100644 anbin.c
- create mode 100644 log.c
- create mode 100644 log.h
-
 diff --git a/Makefile b/Makefile
 index fc1d7a6..8fe8fc5 100644
 --- a/Makefile
@@ -473,10 +451,10 @@ index b3bc85d..b7a706d 100644
  load_long(void)
 diff --git a/log.c b/log.c
 new file mode 100644
-index 0000000..8c8d460
+index 0000000..0999b19
 --- /dev/null
 +++ b/log.c
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,178 @@
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <unistd.h>
@@ -518,6 +496,10 @@ index 0000000..8c8d460
 +	spans[0].end 	= t_start + t_size;
 +	spans[1].start 	= d_start;
 +	spans[1].end 	= d_start + d_size;
++#if 0
++	printf("0: %x-%x / 1: %x-%x\n", spans[0].start, spans[0].end,
++	       spans[1].start, spans[1].end);
++#endif
 +}
 +
 +void log_iref(unsigned int addr, unsigned int len)
@@ -548,6 +530,7 @@ index 0000000..8c8d460
 +	struct stat sb;
 +	int tf_try = 0;
 +	int fd;
++	int sstart, slen;
 +
 +	is = ds = ts = 0;
 +	for (i = 0; i < PDP_MEM_SIZE; i++) {
@@ -582,18 +565,31 @@ index 0000000..8c8d460
 +#endif
 +			if (interesting)
 +				interesting_accesses++;
-+			else
++			else {
 +				ts++;
++				/* Hacky: Clear the bit saying this byte's
++				 * accessed; it's uninteresting, and any bits
++				 * set in the byte at the start/end of the span
++				 * may leak into the written out file (depending
++				 * on the rounding)
++				 */
++				touched[i/8] &= ~(1<<(i & 7));
++			}
 +		}
 +	}
 +
-+	printf("Log of %s stats:  I accessed 0x%x, D accessed 0x%x, total 0x%x \n"
-+	       " Interesting I 0x%x, D 0x%x, total 0x%x\n", bin_name,
++#ifdef WE_CARE_ABOUT_I_AND_D_SEPARATE
++	printf("Log of %s stats:  I accessed %d, D accessed %d, total %d \n"
++	       " Interesting I %d, D %d, total %d\n", bin_name,
 +	       is, ds, ts, interesting_inst, interesting_data, interesting_accesses);
++#else
++	printf("Log of %s stats:  %d uninteresting bytes accessed, %d interesting\n", bin_name,
++	       ts, interesting_accesses);
++#endif
 +
 +	totalbin = (spans[0].end - spans[0].start) + (spans[1].end - spans[1].start);
-+	printf("[Total loaded from file = 0x%x ; interesting accesses %.2f%%\n]",
-+	       totalbin, 100.0*(float)interesting_accesses/(float)totalbin);
++	printf("[Total loaded from file = %d ; interesting accesses %d =  %.2f%%]\n",
++	       totalbin, interesting_accesses, 100.0*(float)interesting_accesses/(float)totalbin);
 +
 +	/* Save bitmaps for later perusal/unionning */
 +
@@ -608,9 +604,19 @@ index 0000000..8c8d460
 +		perror("Can't open output stats file");
 +		return;
 +	}
-+	/* Write bytes covering interesting subject bytes */
-+	write(fd, &touched[spans[0].start/8], (spans[0].end-spans[0].start)/8);
-+	write(fd, &touched[spans[1].start/8], (spans[1].end-spans[1].start)/8);
++	if (spans[1].start == spans[0].end) {
++		sstart = spans[0].start/8; /* Round down so we cover all */
++		slen = ((spans[1].end+7)/8) - sstart;
++		write(fd, &touched[sstart], slen);
++	} else {
++		/* Write bytes covering interesting subject bytes */
++		sstart = spans[0].start/8; /* Round down so we cover all */
++		slen = ((spans[0].end+7)/8) - sstart;
++		write(fd, &touched[sstart], slen);
++		sstart = spans[1].start/8;
++		slen = ((spans[1].end+7)/8) - sstart;
++		write(fd, &touched[sstart], slen);
++	}
 +	close(fd);
 +}
 +
@@ -656,6 +662,3 @@ index cd52f6e..38e45e5 100644
  				/* Other emulated systems (RT-11) can go here */
  
      run();			/* Now run the binary */
--- 
-1.7.0.4
-
