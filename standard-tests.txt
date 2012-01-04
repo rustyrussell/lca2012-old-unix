@@ -15,8 +15,32 @@ ls -f
 # For max V6 coverage, want an unreadable directory (chmod 000) and ls -lf that dir.
 # Also, files that are very old.  (See make_dirs_and_files.sh)
 
-# Other common GNU options, e.g. -R, --color?
+# Other common GNU options from the survey:
+# -R --time-style= -1 -A -h --color --full-time -F -S --help --version -L
+#
+# Less common but used, from the survey:
+# -c -n -C -H -G --group-directories-first -m -o --show-control-chars --sort= --time= -w -p --format= -k -si --quoting-style= --block-size -D
+#
 
+ls -oAhFSL --color --full-time
+ls -1R /dev
+ls -l --time-style=full-iso
+ls -l --time-style=long-iso
+ls -l --time-style=iso
+ls -l --time-style=locale
+ls -l --time-style=='+%s'
+ls --help
+ls --version
+
+ls -ltcnkD
+ls -C
+ls -lG --group-directories-first --time=ctime
+ls -H my_filelink
+ls -mp --sort=time -w 40
+ls -o --show-control-chars
+ls --format=horizontal
+ls -lh --si --quoting-style=c
+ls -l --block-size 256 --quoting-style=shell-always
 
 cat:
 
