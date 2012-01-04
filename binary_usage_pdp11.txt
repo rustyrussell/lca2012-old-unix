@@ -1,6 +1,29 @@
 Binary use measurement with apout
 =================================
 
+Tests run in 'standard-files' by Makefile.  Tests described in standard-tests.txt.
+
+Output from 'make pdp11 APOUT=/home/matt/Documents/LCA/2012/binsize/pdp11/apout2.3beta1 ROOT=/home/matt/Documents/LCA/2012/binsize/pdp11/TUHS/PDP-11/Trees/V6/':
+
+After running ls, cat and grep with various options:
+
+ ls: Files 16, 4904 bytes, 4167 of which touched.  (84.97%)
+ cat: Files 16, 136 bytes, 135 of which touched.  (99.26%)
+ grep: Files 19, 2176 bytes, 1549 of which touched.  (71.19%)
+
+
+Output from same, but pointed at ***V7*** UNIX tree:
+
+After running ls, cat and grep with various options:
+
+ ls: Files 6, 8056 bytes, 5997 of which touched.  (74.44%)
+ cat: Files 6, 3736 bytes, 2114 of which touched.  (56.58%)
+ grep: Files 7, 6088 bytes, 2538 of which touched.  (41.69%)
+
+
+---
+
+Old by-hand stuff:
 
 ls -ld
 [Total loaded from file = 4904 ; interesting accesses 2886 =  58.85%]
