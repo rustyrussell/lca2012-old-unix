@@ -1,0 +1,9 @@
+To get an unsigned variable, they used a char *.
+No '=' for initialization of declared vars outside function.
+=| and =& instead of |=, &=.
+No checking of structure member names, eg:
+	int x;
+	struct { char dminor, dmajor;};
+	x.dminor = 7;
+Also, used to treat pointer as integer (exact addition).
+end is symbol for end of text; sbrk() used instead of malloc.
