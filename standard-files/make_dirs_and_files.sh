@@ -12,3 +12,6 @@ done
 chmod 000 dir2
 # 
 touch  -t 196901010100 dir1
+
+ln -sf dir9 my_dirlink
+ln -sf 13 my_filelink
