@@ -32,4 +32,8 @@ Recursion depth 23.. OK
 24 drops off, <200 nodes whereas 23 was 278! and 22 was 287!
 
 - How much is ever executed?
+c_tiny_s	515108		9844 (1.91%)	27 (110592 / 100695 unused)
+
+- Why malloc/free?  What does exit do?  Why dynamic linking stuff?
+
 
