@@ -18,4 +18,53 @@ c_tiny_s	515108		9844 (1.91%)	27 (110592 / 100695 unused)
 asmutils doesn't seem to play nice:
 	 /home/matt/asmutils-0.18/src/grep: Invalid ELF image for this architecture
 
-Try LD_BIND_NOW.
+Try LD_BIND_NOW.  (Uses more, 10018 bytes!)
+
+Debian 6.0 ls:
+==============
+
+ls -ld
+ls -asg dir2 m*
+ls -lur . nonexistentfile
+ls -tui
+ls -f
+
+--- /scratch/matt/deb/tmp/binsize/bin.ls.
+    Files 6, 96400 bytes, 24020 of which touched.  (24.92%)
+    23 pages touched, avg. 1052.70 bytes per page, 69996 bytes unused.
+--- /scratch/matt/deb/tmp/binsize/lib.ld-2.11.2.so.
+    Files 6, 113968 bytes, 28529 of which touched.  (25.03%)
+    26 pages touched, avg. 1097.27 bytes per page, 77967 bytes unused.
+--- /scratch/matt/deb/tmp/binsize/lib.libacl.so.1.1.0.
+    Files 6, 26496 bytes, 1933 of which touched.  (7.30%)
+    5 pages touched, avg. 386.60 bytes per page, 18547 bytes unused.
+--- /scratch/matt/deb/tmp/binsize/lib.libattr.so.1.1.0.
+    Files 6, 14888 bytes, 1448 of which touched.  (9.73%)
+    2 pages touched, avg. 724.00 bytes per page, 6744 bytes unused.
+--- /scratch/matt/deb/tmp/binsize/lib.libc-2.11.2.so.
+    Files 6, 1319176 bytes, 88075 of which touched.  (6.68%)
+    117 pages touched, avg. 752.78 bytes per page, 391157 bytes unused.
+--- /scratch/matt/deb/tmp/binsize/lib.libdl-2.11.2.so.
+    Files 6, 9736 bytes, 1374 of which touched.  (14.11%)
+    3 pages touched, avg. 458.00 bytes per page, 10914 bytes unused.
+--- /scratch/matt/deb/tmp/binsize/lib.libnsl-2.11.2.so.
+    Files 3, 79680 bytes, 3883 of which touched.  (4.87%)
+    7 pages touched, avg. 874.71 bytes per page, 22549 bytes unused.
+--- /scratch/matt/deb/tmp/binsize/lib.libnss_compat-2.11.2.so.
+    Files 3, 30496 bytes, 5308 of which touched.  (17.41%)
+    6 pages touched, avg. 884.67 bytes per page, 19268 bytes unused.
+--- /scratch/matt/deb/tmp/binsize/lib.libnss_files-2.11.2.so.
+    Files 3, 42576 bytes, 1836 of which touched.  (4.31%)
+    5 pages touched, avg. 367.20 bytes per page, 18644 bytes unused.
+--- /scratch/matt/deb/tmp/binsize/lib.libnss_nis-2.11.2.so.
+    Files 3, 38504 bytes, 2589 of which touched.  (6.72%)
+    7 pages touched, avg. 369.86 bytes per page, 26083 bytes unused.
+--- /scratch/matt/deb/tmp/binsize/lib.libpthread-2.11.2.so.
+    Files 6, 117112 bytes, 8660 of which touched.  (7.39%)
+    13 pages touched, avg. 666.15 bytes per page, 44588 bytes unused.
+--- /scratch/matt/deb/tmp/binsize/lib.librt-2.11.2.so.
+    Files 6, 30688 bytes, 2119 of which touched.  (6.90%)
+    6 pages touched, avg. 353.17 bytes per page, 22457 bytes unused.
+--- /scratch/matt/deb/tmp/binsize/lib.libselinux.so.1.
+    Files 6, 104280 bytes, 6270 of which touched.  (6.01%)
+    11 pages touched, avg. 678.00 bytes per page, 37598 bytes unused.
