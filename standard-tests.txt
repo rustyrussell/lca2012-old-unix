@@ -1,11 +1,13 @@
 Options tested for ls/cat/grep analysis
 =======================================
 
+These are assumed to be in the 'standard-files' directory, having made the
+files/devs using the scripts in there.
 
 ls:
 
 ls -ld
-ls -asg dir1 m*
+ls -asg dir2 m*
 ls -lur . nonexistentfile
 ls -tui
 ls -f
