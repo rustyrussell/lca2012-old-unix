@@ -1,0 +1,15 @@
+Dynamically linked:
+
+$ size unix-cat-rewritten-in-c gnu-cat-reduced
+   text	   data	    bss	    dec	    hex	filename
+   1509	    272	   1036	   2817	    b01	unix-cat-rewritten-in-c
+   2548	    300	     16	   2864	    b30	gnu-cat-reduced
+
+gnu-cat:
+1) Stats input and output to determine largest optimal buffer size.
+   Uses 4K if not detected.  Adds pagesize - 1 to get aligned buffer.
+2) Uses generic read/write routines which handle signals.
+
+=> If we make that buffer static (assume 4k pagesize), we get:
+   text	   data	    bss	    dec	    hex	filename
+   2190	    288	   8208	  10686	   29be	gnu-cat-reduced
