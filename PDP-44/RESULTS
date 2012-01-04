@@ -1,0 +1,30 @@
+# Approximate text conversion using annotate-asm.sh:
+
+Extra text for V6 cat:
+Total bytes added: 173
+Extra text for V6 cat (C equivalent):
+Total bytes added: 351
+Extra text for V6 grep:
+Total bytes added: 2395
+Extra text for V6 ls:
+Total bytes added: 4711
+
+Data conversion (reading C source: doesn't include linked routines!)
+cat: bss (1024 byte buffers, 1 int = 1026) adds 2 bytes.
+ls: bss (114 byte buffer, 1 int = 116) adds 2 bytes.
+    data (16 byte buffer, 148 string bytes, 69 ints, 14 pointers = 330) adds 222 bytes
+grep: data (1025 byte buffer, 73 string bytes, 11 int = 1120) adds 22 bytes
+=> data grows from 2592 to 2840 bytes => 10% growth.
+=> extrapolate to linked binaries, means 4648 => 5093 bytes
+
+Assume header growth from 16 bytes to 64 bytes.
+
+Thus the binaries before and after:
+
+Name
+     PDP11			     PDP44
+	Text	Data	Total		Text	Data	Total
+cat	 378	1564	1958		 729	1714	 2507
+grep	1966	1800	3782		4361	1972	 6397
+ls	4352	1822	6190		9063	1996	11123
+
