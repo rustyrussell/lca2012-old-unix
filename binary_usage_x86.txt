@@ -9,14 +9,12 @@ string table on top).
 
 
 ---
+c_tiny is "int main(void) { return 42; }":
+
 		ELF size	Usage		Page usage
 
 c_tiny		577872		9878 (1.71%)	27 (110592 total of which 100714 unused)
 c_tiny_s	515108		9844 (1.91%)	27 (110592 / 100695 unused)
-
-
-asmutils doesn't seem to play nice:
-	 /home/matt/asmutils-0.18/src/grep: Invalid ELF image for this architecture
 
 Try LD_BIND_NOW.  (Uses more, 10018 bytes!)
 
@@ -26,53 +24,55 @@ Debian 6.0 ls:
 Standard tests as in standard-tests.txt, run from debian 6.0 chroot with
 qemu-i386 and analyse in ~/:
 
-make x86 QEMU=~/
+make tmpdirs_qemu ls x86-analyse QEMU=~/
 
+ls
 ls -ld
 ls -asg dir2 m*
 ls -lur . nonexistentfile
 ls -tui
 ls -f
 
---- /scratch/matt/deb/tmp/binsize/bin.ls.
-    Files 6, 96400 bytes, 24020 of which touched.  (24.92%)
-    23 pages touched, avg. 1052.70 bytes per page, 69996 bytes unused.
---- /scratch/matt/deb/tmp/binsize/lib.ld-2.11.2.so.
-    Files 6, 113968 bytes, 28529 of which touched.  (25.03%)
-    26 pages touched, avg. 1097.27 bytes per page, 77967 bytes unused.
---- /scratch/matt/deb/tmp/binsize/lib.libacl.so.1.1.0.
-    Files 6, 26496 bytes, 1933 of which touched.  (7.30%)
-    5 pages touched, avg. 386.60 bytes per page, 18547 bytes unused.
---- /scratch/matt/deb/tmp/binsize/lib.libattr.so.1.1.0.
-    Files 6, 14888 bytes, 1448 of which touched.  (9.73%)
-    2 pages touched, avg. 724.00 bytes per page, 6744 bytes unused.
---- /scratch/matt/deb/tmp/binsize/lib.libc-2.11.2.so.
-    Files 6, 1319176 bytes, 88075 of which touched.  (6.68%)
-    117 pages touched, avg. 752.78 bytes per page, 391157 bytes unused.
---- /scratch/matt/deb/tmp/binsize/lib.libdl-2.11.2.so.
-    Files 6, 9736 bytes, 1374 of which touched.  (14.11%)
-    3 pages touched, avg. 458.00 bytes per page, 10914 bytes unused.
---- /scratch/matt/deb/tmp/binsize/lib.libnsl-2.11.2.so.
-    Files 3, 79680 bytes, 3883 of which touched.  (4.87%)
-    7 pages touched, avg. 874.71 bytes per page, 22549 bytes unused.
---- /scratch/matt/deb/tmp/binsize/lib.libnss_compat-2.11.2.so.
-    Files 3, 30496 bytes, 5308 of which touched.  (17.41%)
-    6 pages touched, avg. 884.67 bytes per page, 19268 bytes unused.
---- /scratch/matt/deb/tmp/binsize/lib.libnss_files-2.11.2.so.
-    Files 3, 42576 bytes, 1836 of which touched.  (4.31%)
-    5 pages touched, avg. 367.20 bytes per page, 18644 bytes unused.
---- /scratch/matt/deb/tmp/binsize/lib.libnss_nis-2.11.2.so.
-    Files 3, 38504 bytes, 2589 of which touched.  (6.72%)
-    7 pages touched, avg. 369.86 bytes per page, 26083 bytes unused.
---- /scratch/matt/deb/tmp/binsize/lib.libpthread-2.11.2.so.
-    Files 6, 117112 bytes, 8660 of which touched.  (7.39%)
-    13 pages touched, avg. 666.15 bytes per page, 44588 bytes unused.
---- /scratch/matt/deb/tmp/binsize/lib.librt-2.11.2.so.
-    Files 6, 30688 bytes, 2119 of which touched.  (6.90%)
-    6 pages touched, avg. 353.17 bytes per page, 22457 bytes unused.
---- /scratch/matt/deb/tmp/binsize/lib.libselinux.so.1.
-    Files 6, 104280 bytes, 6270 of which touched.  (6.01%)
-    11 pages touched, avg. 678.00 bytes per page, 37598 bytes unused.
+./analyse_qemu_output.sh /home/matt//analyse /tmp/binsize
+--- /tmp/binsize/bin.ls.
+Files 6, 96400 bytes, 25210 of which touched.  (26.15%)
+23 pages touched, avg. 1104.74 bytes per page, 68799 bytes unused.
+--- /tmp/binsize/lib.ld-2.11.2.so.
+Files 6, 113968 bytes, 28529 of which touched.  (25.03%)
+26 pages touched, avg. 1097.27 bytes per page, 77967 bytes unused.
+--- /tmp/binsize/lib.libacl.so.1.1.0.
+Files 6, 26496 bytes, 1933 of which touched.  (7.30%)
+5 pages touched, avg. 386.60 bytes per page, 18547 bytes unused.
+--- /tmp/binsize/lib.libattr.so.1.1.0.
+Files 6, 14888 bytes, 1448 of which touched.  (9.73%)
+2 pages touched, avg. 724.00 bytes per page, 6744 bytes unused.
+--- /tmp/binsize/lib.libc-2.11.2.so.
+Files 6, 1319176 bytes, 88425 of which touched.  (6.70%)
+118 pages touched, avg. 749.36 bytes per page, 394903 bytes unused.
+--- /tmp/binsize/lib.libdl-2.11.2.so.
+Files 6, 9736 bytes, 1374 of which touched.  (14.11%)
+3 pages touched, avg. 458.00 bytes per page, 10914 bytes unused.
+--- /tmp/binsize/lib.libnsl-2.11.2.so.
+Files 3, 79680 bytes, 3883 of which touched.  (4.87%)
+7 pages touched, avg. 874.71 bytes per page, 22549 bytes unused.
+--- /tmp/binsize/lib.libnss_compat-2.11.2.so.
+Files 3, 30496 bytes, 5308 of which touched.  (17.41%)
+6 pages touched, avg. 884.67 bytes per page, 19268 bytes unused.
+--- /tmp/binsize/lib.libnss_files-2.11.2.so.
+Files 3, 42576 bytes, 1836 of which touched.  (4.31%)
+5 pages touched, avg. 367.20 bytes per page, 18644 bytes unused.
+--- /tmp/binsize/lib.libnss_nis-2.11.2.so.
+Files 3, 38504 bytes, 2589 of which touched.  (6.72%)
+7 pages touched, avg. 369.86 bytes per page, 26083 bytes unused.
+--- /tmp/binsize/lib.libpthread-2.11.2.so.
+Files 6, 117112 bytes, 8657 of which touched.  (7.39%)
+13 pages touched, avg. 665.92 bytes per page, 44591 bytes unused.
+--- /tmp/binsize/lib.librt-2.11.2.so.
+Files 6, 30688 bytes, 2119 of which touched.  (6.90%)
+6 pages touched, avg. 353.17 bytes per page, 22457 bytes unused.
+--- /tmp/binsize/lib.libselinux.so.1.
+Files 6, 104280 bytes, 6270 of which touched.  (6.01%)
+11 pages touched, avg. 678.00 bytes per page, 37598 bytes unused.
 
 
 After running extended GNU-only commands as detailed in standard-tests.txt:
@@ -80,83 +80,281 @@ After running extended GNU-only commands as detailed in standard-tests.txt:
 make x86-extra QEMU=~/
 
 --- /tmp/binsize/bin.ls.
-    Files 18, 96400 bytes, 42389 of which touched.  (43.97%)
-    24 pages touched, avg. 1774.12 bytes per page, 55725 bytes unused.
+Files 18, 96400 bytes, 42389 of which touched.  (43.97%)
+24 pages touched, avg. 1774.12 bytes per page, 55725 bytes unused.
 --- /tmp/binsize/lib.ld-2.11.2.so.
-    Files 18, 113968 bytes, 28529 of which touched.  (25.03%)
-    26 pages touched, avg. 1097.27 bytes per page, 77967 bytes unused.
+Files 18, 113968 bytes, 28529 of which touched.  (25.03%)
+26 pages touched, avg. 1097.27 bytes per page, 77967 bytes unused.
 --- /tmp/binsize/lib.libacl.so.1.1.0.
-    Files 18, 26496 bytes, 1937 of which touched.  (7.31%)
-    5 pages touched, avg. 387.40 bytes per page, 18543 bytes unused.
+Files 18, 26496 bytes, 1937 of which touched.  (7.31%)
+5 pages touched, avg. 387.40 bytes per page, 18543 bytes unused.
 --- /tmp/binsize/lib.libattr.so.1.1.0.
-    Files 18, 14888 bytes, 1448 of which touched.  (9.73%)
-    2 pages touched, avg. 724.00 bytes per page, 6744 bytes unused.
+Files 18, 14888 bytes, 1448 of which touched.  (9.73%)
+2 pages touched, avg. 724.00 bytes per page, 6744 bytes unused.
 --- /tmp/binsize/lib.libc-2.11.2.so.
-    Files 18, 1319176 bytes, 91743 of which touched.  (6.95%)
-    119 pages touched, avg. 770.95 bytes per page, 395681 bytes unused.
+Files 18, 1319176 bytes, 91742 of which touched.  (6.95%)
+119 pages touched, avg. 770.94 bytes per page, 395682 bytes unused.
 --- /tmp/binsize/lib.libdl-2.11.2.so.
-    Files 18, 9736 bytes, 1374 of which touched.  (14.11%)
-    3 pages touched, avg. 458.00 bytes per page, 10914 bytes unused.
+Files 18, 9736 bytes, 1374 of which touched.  (14.11%)
+3 pages touched, avg. 458.00 bytes per page, 10914 bytes unused.
 --- /tmp/binsize/lib.libnsl-2.11.2.so.
-    Files 9, 79680 bytes, 3883 of which touched.  (4.87%)
-    7 pages touched, avg. 874.71 bytes per page, 22549 bytes unused.
+Files 9, 79680 bytes, 3883 of which touched.  (4.87%)
+7 pages touched, avg. 874.71 bytes per page, 22549 bytes unused.
 --- /tmp/binsize/lib.libnss_compat-2.11.2.so.
-    Files 9, 30496 bytes, 5293 of which touched.  (17.36%)
-    6 pages touched, avg. 882.17 bytes per page, 19283 bytes unused.
+Files 9, 30496 bytes, 5293 of which touched.  (17.36%)
+6 pages touched, avg. 882.17 bytes per page, 19283 bytes unused.
 --- /tmp/binsize/lib.libnss_files-2.11.2.so.
-    Files 9, 42576 bytes, 1836 of which touched.  (4.31%)
-    5 pages touched, avg. 367.20 bytes per page, 18644 bytes unused.
+Files 9, 42576 bytes, 1836 of which touched.  (4.31%)
+5 pages touched, avg. 367.20 bytes per page, 18644 bytes unused.
 --- /tmp/binsize/lib.libnss_nis-2.11.2.so.
-    Files 9, 38504 bytes, 2589 of which touched.  (6.72%)
-    7 pages touched, avg. 369.86 bytes per page, 26083 bytes unused.
+Files 9, 38504 bytes, 2589 of which touched.  (6.72%)
+7 pages touched, avg. 369.86 bytes per page, 26083 bytes unused.
 --- /tmp/binsize/lib.libpthread-2.11.2.so.
-    Files 18, 117112 bytes, 8657 of which touched.  (7.39%)
-    13 pages touched, avg. 665.92 bytes per page, 44591 bytes unused.
+Files 18, 117112 bytes, 8657 of which touched.  (7.39%)
+13 pages touched, avg. 665.92 bytes per page, 44591 bytes unused.
 --- /tmp/binsize/lib.librt-2.11.2.so.
-    Files 18, 30688 bytes, 2131 of which touched.  (6.94%)
-    6 pages touched, avg. 355.17 bytes per page, 22445 bytes unused.
+Files 18, 30688 bytes, 2131 of which touched.  (6.94%)
+6 pages touched, avg. 355.17 bytes per page, 22445 bytes unused.
 --- /tmp/binsize/lib.libselinux.so.1.
-    Files 18, 104280 bytes, 6635 of which touched.  (6.36%)
-    12 pages touched, avg. 651.92 bytes per page, 41329 bytes unused.
+Files 18, 104280 bytes, 6635 of which touched.  (6.36%)
+12 pages touched, avg. 651.92 bytes per page, 41329 bytes unused.
 
 
 Both simple flags and extended flags:
+
+make ls ls-gnu-extra x86-analyse QEMU=~/
+
 --- /tmp/binsize/bin.ls.
-    Files 23, 96400 bytes, 46915 of which touched.  (48.67%)	*** increased
-    24 pages touched, avg. 1963.08 bytes per page, 51190 bytes unused.
+Files 24, 96400 bytes, 46890 of which touched.  (48.64%)
+24 pages touched, avg. 1962.04 bytes per page, 51215 bytes unused.
 --- /tmp/binsize/lib.ld-2.11.2.so.
-    Files 23, 113968 bytes, 28529 of which touched.  (25.03%)
-    26 pages touched, avg. 1097.27 bytes per page, 77967 bytes unused.
+Files 24, 113968 bytes, 28529 of which touched.  (25.03%)
+26 pages touched, avg. 1097.27 bytes per page, 77967 bytes unused.
 --- /tmp/binsize/lib.libacl.so.1.1.0.
-    Files 23, 26496 bytes, 1937 of which touched.  (7.31%)
-    5 pages touched, avg. 387.40 bytes per page, 18543 bytes unused.
+Files 24, 26496 bytes, 1937 of which touched.  (7.31%)
+5 pages touched, avg. 387.40 bytes per page, 18543 bytes unused.
 --- /tmp/binsize/lib.libattr.so.1.1.0.
-    Files 23, 14888 bytes, 1448 of which touched.  (9.73%)
-    2 pages touched, avg. 724.00 bytes per page, 6744 bytes unused.
+Files 24, 14888 bytes, 1448 of which touched.  (9.73%)
+2 pages touched, avg. 724.00 bytes per page, 6744 bytes unused.
 --- /tmp/binsize/lib.libc-2.11.2.so.
-    Files 23, 1319176 bytes, 91837 of which touched.  (6.96%)	*** increased
-    119 pages touched, avg. 771.74 bytes per page, 395587 bytes unused.
+Files 24, 1319176 bytes, 91836 of which touched.  (6.96%)
+119 pages touched, avg. 771.73 bytes per page, 395588 bytes unused.
 --- /tmp/binsize/lib.libdl-2.11.2.so.
-    Files 23, 9736 bytes, 1374 of which touched.  (14.11%)
-    3 pages touched, avg. 458.00 bytes per page, 10914 bytes unused.
+Files 24, 9736 bytes, 1374 of which touched.  (14.11%)
+3 pages touched, avg. 458.00 bytes per page, 10914 bytes unused.
 --- /tmp/binsize/lib.libnsl-2.11.2.so.
-    Files 12, 79680 bytes, 3883 of which touched.  (4.87%)
-    7 pages touched, avg. 874.71 bytes per page, 22549 bytes unused.
+Files 12, 79680 bytes, 3883 of which touched.  (4.87%)
+7 pages touched, avg. 874.71 bytes per page, 22549 bytes unused.
 --- /tmp/binsize/lib.libnss_compat-2.11.2.so.
-    Files 12, 30496 bytes, 5308 of which touched.  (17.41%)	** increased
-    6 pages touched, avg. 884.67 bytes per page, 19268 bytes unused.
+Files 12, 30496 bytes, 5308 of which touched.  (17.41%)
+6 pages touched, avg. 884.67 bytes per page, 19268 bytes unused.
 --- /tmp/binsize/lib.libnss_files-2.11.2.so.
-    Files 12, 42576 bytes, 1836 of which touched.  (4.31%)
-    5 pages touched, avg. 367.20 bytes per page, 18644 bytes unused.
+Files 12, 42576 bytes, 1836 of which touched.  (4.31%)
+5 pages touched, avg. 367.20 bytes per page, 18644 bytes unused.
 --- /tmp/binsize/lib.libnss_nis-2.11.2.so.
-    Files 12, 38504 bytes, 2589 of which touched.  (6.72%)
-    7 pages touched, avg. 369.86 bytes per page, 26083 bytes unused.
+Files 12, 38504 bytes, 2589 of which touched.  (6.72%)
+7 pages touched, avg. 369.86 bytes per page, 26083 bytes unused.
 --- /tmp/binsize/lib.libpthread-2.11.2.so.
-    Files 23, 117112 bytes, 8657 of which touched.  (7.39%)
-    13 pages touched, avg. 665.92 bytes per page, 44591 bytes unused.
+Files 24, 117112 bytes, 8657 of which touched.  (7.39%)
+13 pages touched, avg. 665.92 bytes per page, 44591 bytes unused.
 --- /tmp/binsize/lib.librt-2.11.2.so.
-    Files 23, 30688 bytes, 2131 of which touched.  (6.94%)
-    6 pages touched, avg. 355.17 bytes per page, 22445 bytes unused.
+Files 24, 30688 bytes, 2131 of which touched.  (6.94%)
+6 pages touched, avg. 355.17 bytes per page, 22445 bytes unused.
 --- /tmp/binsize/lib.libselinux.so.1.
-    Files 23, 104280 bytes, 6635 of which touched.  (6.36%)
-    12 pages touched, avg. 651.92 bytes per page, 41329 bytes unused.
+Files 24, 104280 bytes, 6635 of which touched.  (6.36%)
+12 pages touched, avg. 651.92 bytes per page, 41329 bytes unused.
+
+
+Debian 6.0 ls, cat, grep
+========================
+
+make x86 QEMU=~/
+
+--- /tmp/binsize/bin.cat.
+Files 5, 42816 bytes, 4787 of which touched.  (11.18%)
+9 pages touched, avg. 532.33 bytes per page, 32073 bytes unused.
+--- /tmp/binsize/bin.grep.
+Files 7, 104632 bytes, 24439 of which touched.  (23.36%)
+23 pages touched, avg. 1085.48 bytes per page, 69242 bytes unused.
+--- /tmp/binsize/bin.ls.
+Files 6, 96400 bytes, 25068 of which touched.  (26.00%)
+23 pages touched, avg. 1098.57 bytes per page, 68941 bytes unused.
+--- /tmp/binsize/lib.ld-2.11.2.so.
+Files 18, 113968 bytes, 29445 of which touched.  (25.84%)
+26 pages touched, avg. 1132.50 bytes per page, 77051 bytes unused.
+--- /tmp/binsize/lib.libacl.so.1.1.0.
+Files 6, 26496 bytes, 1933 of which touched.  (7.30%)
+5 pages touched, avg. 386.60 bytes per page, 18547 bytes unused.
+--- /tmp/binsize/lib.libattr.so.1.1.0.
+Files 6, 14888 bytes, 1448 of which touched.  (9.73%)
+2 pages touched, avg. 724.00 bytes per page, 6744 bytes unused.
+--- /tmp/binsize/lib.libc-2.11.2.so.
+Files 18, 1319176 bytes, 101549 of which touched.  (7.70%)
+135 pages touched, avg. 752.21 bytes per page, 451411 bytes unused.
+--- /tmp/binsize/lib.libdl-2.11.2.so.
+Files 13, 9736 bytes, 1402 of which touched.  (14.40%)
+3 pages touched, avg. 467.33 bytes per page, 10886 bytes unused.
+--- /tmp/binsize/lib.libnsl-2.11.2.so.
+Files 3, 79680 bytes, 3883 of which touched.  (4.87%)
+7 pages touched, avg. 874.71 bytes per page, 22549 bytes unused.
+--- /tmp/binsize/lib.libnss_compat-2.11.2.so.
+Files 3, 30496 bytes, 5308 of which touched.  (17.41%)
+6 pages touched, avg. 884.67 bytes per page, 19268 bytes unused.
+--- /tmp/binsize/lib.libnss_files-2.11.2.so.
+Files 3, 42576 bytes, 1836 of which touched.  (4.31%)
+5 pages touched, avg. 367.20 bytes per page, 18644 bytes unused.
+--- /tmp/binsize/lib.libnss_nis-2.11.2.so.
+Files 3, 38504 bytes, 2589 of which touched.  (6.72%)
+7 pages touched, avg. 369.86 bytes per page, 26083 bytes unused.
+--- /tmp/binsize/lib.libpthread-2.11.2.so.
+Files 6, 117112 bytes, 8657 of which touched.  (7.39%)
+13 pages touched, avg. 665.92 bytes per page, 44591 bytes unused.
+--- /tmp/binsize/lib.librt-2.11.2.so.
+Files 6, 30688 bytes, 2119 of which touched.  (6.90%)
+6 pages touched, avg. 353.17 bytes per page, 22457 bytes unused.
+--- /tmp/binsize/lib.libselinux.so.1.
+Files 6, 104280 bytes, 6270 of which touched.  (6.01%)
+11 pages touched, avg. 678.00 bytes per page, 37598 bytes unused.
+
+
+And now, size changes with extra ls options (make ls-gnu-extra) on top:
+
+--- /tmp/binsize/bin.ls.
+Files 43, 96400 bytes, 46896 of which touched.  (48.65%)
+24 pages touched, avg. 1962.29 bytes per page, 51209 bytes unused.
+--- /tmp/binsize/lib.libacl.so.1.1.0.
+Files 24, 26496 bytes, 1937 of which touched.  (7.31%)
+5 pages touched, avg. 387.40 bytes per page, 18543 bytes unused.
+--- /tmp/binsize/lib.libc-2.11.2.so.
+Files 36, 1319176 bytes, 103948 of which touched.  (7.88%)
+136 pages touched, avg. 764.32 bytes per page, 453108 bytes unused.
+--- /tmp/binsize/lib.librt-2.11.2.so.
+Files 24, 30688 bytes, 2131 of which touched.  (6.94%)
+6 pages touched, avg. 355.17 bytes per page, 22445 bytes unused.
+--- /tmp/binsize/lib.libselinux.so.1.
+Files 24, 104280 bytes, 6635 of which touched.  (6.36%)
+12 pages touched, avg. 651.92 bytes per page, 41329 bytes unused.
+
+Notes:
+8K of libpthread in use!
+
+
+Asmutils ls cat & grep:
+=======================
+
+ELF headers (uncounted) are 76 bytes.
+
+ ~/qemu/i386-linux-user/qemu-i386 ~/asmutils-0.18/src/ls
+
+---- ls:
+
+;; -C  columnar output; default if stdout is a tty
+;; -1  one file per output line; default if stdout is not a tty
+;; -l  "long" output
+;; -F  show file type suffixes
+;; -i  show inode numbers
+;; -s  show size of files in 1K-blocks
+;; -d  don't expand directories
+;; -a  show all (hidden) files
+;; -N  don't replace non-graphic characters with a question mark
+;; -b  show non-graphic characters using C-style backslash sequences
+;; -R  recursively list contents of subdirectories
+
+
+Test the options it has in common with PDP11 ls, i.e. -lasdi:
+    Files 11, 1024 bytes, 838 of which touched.  (81.84%)
+    1 pages touched, avg. 3904.00 bytes per page, 192 bytes unused.
+
+All options including --:
+    Files 20, 1024 bytes, 885 of which touched.  (86.43%)
+    1 pages touched, avg. 3952.00 bytes per page, 144 bytes unused.
+
+Extra stuff: --, output to non-TTY (no difference)
+      885 bytes touched-- is actually 93% (885 out of 942) after header.
+
+
+---- cat:
+
+Has options!
+
+Basic V6-like tests with no options, e.g. read files, stdin, bad file & closed stdin:
+    Files 6, 688 bytes, 129 of which touched.  (18.75%)
+    1 pages touched, avg. 3537.00 bytes per page, 559 bytes unused.
+With options -AbeEnstTv mbox2
+    Files 4, 688 bytes, 569 of which touched.  (82.70%)
+    1 pages touched, avg. 3977.00 bytes per page, 119 bytes unused.
+With options -Ab, -Asn
+    Files 12, 688 bytes, 571 of which touched.  (82.99%)
+    1 pages touched, avg. 3979.00 bytes per page, 117 bytes unused.
+(This is actually 93% -- with 571/688-76, i.e. 612 bytes of code.)
+
+
+---- grep:
+
+Supports only -b, -c -q -v and **NO REGEXPS**
+It's 603 bytes.
+
+With allllll options, hit 529 bytes out of 603.. header must be smaller than 76 here, as 603-76=527 :)
+Anyway -- 100% coverage here, on x86.
+
+
+"General use of Debian 6.0"
+===========================
+
+Some opera (open, click a couple of links before it crashes, scroll, menu), gimp
+(open a PNG and a JPEG, paint stuff, resize, save a JPEG and a PNG, alter
+curves), rxvt (type some stuff & get colour output), emacs [-nw] (edit stuff,
+dir listing, play tetris), ssh [-X] (log into something else & tunnel X), gzip
+(compress & decompress files & stdin).
+
+epiphany-browser!
+
+Hilights & worst offenders:
+
+--- /tmp/binsize//usr.bin.emacs23-x.
+Files 2, 6583560 bytes, 3234851 of which touched.  (49.14%)
+1452 pages touched, avg. 2227.86 bytes per page, 2712541 bytes unused.
+
+--- /tmp/binsize//home.matt.opera.lib.opera.opera.
+Files 2, 17118776 bytes, 3771902 of which touched.  (22.03%)
+2372 pages touched, avg. 1590.78 bytes per page, 5942385 bytes unused.
+
+--- /tmp/binsize//usr.bin.ssh.
+Files 2, 358760 bytes, 84800 of which touched.  (23.64%)
+81 pages touched, avg. 1047.90 bytes per page, 246896 bytes unused.
+
+--- /tmp/binsize//usr.bin.xeyes.
+Files 2, 15344 bytes, 11113 of which touched.  (72.43%)
+4 pages touched, avg. 3032.50 bytes per page, 4254 bytes unused.
+--- /tmp/binsize//usr.bin.xlogo.
+Files 4, 12688 bytes, 6728 of which touched.  (53.03%)
+3 pages touched, avg. 2242.67 bytes per page, 5560 bytes unused.
+--- /tmp/binsize//usr.lib.libXt.so.6.0.0.
+Files 8, 330144 bytes, 106959 of which touched.  (32.40%)
+71 pages touched, avg. 1513.06 bytes per page, 183389 bytes unused.
+
+--- /tmp/binsize//usr.bin.gimp-2.6.
+Files 2, 4346536 bytes, 1447962 of which touched.  (33.31%)
+796 pages touched, avg. 1819.05 bytes per page, 1812454 bytes unused.
+--- /tmp/binsize//usr.lib.libgtk-x11-2.0.so.0.2000.1.
+Files 5, 4017368 bytes, 940640 of which touched.  (23.41%)
+724 pages touched, avg. 1300.34 bytes per page, 2024056 bytes unused.
+
+--- /tmp/binsize//usr.bin.epiphany-browser.
+Files 1, 818768 bytes, 266658 of which touched.  (32.57%)
+173 pages touched, avg. 1541.38 bytes per page, 441950 bytes unused.
+
+--- /tmp/binsize//usr.lib.libwebkit-1.0.so.2.17.9.
+Files 1, 14905096 bytes, 3424646 of which touched.  (22.98%)
+2170 pages touched, avg. 1578.29 bytes per page, 5463426 bytes unused. !!!
+
+--- /tmp/binsize//lib.libc-2.11.2.so.
+Files 122, 1319176 bytes, 221800 of which touched.  (16.81%)
+197 pages touched, avg. 1125.89 bytes per page, 585112 bytes unused.
+
+Sum of unused parts of all objects mapped when we have this stuff running:
+
+./analyse_qemu_output.sh ~/analyse /tmp/binsize/ > /tmp/bs.txt
+grep unused /scratch/matt/deb/tmp/bs.txt  | cut -f 3 -d , | cut -d' ' -f2 | sort -n | perl -e '$a = 0; while (<STDIN>) { $a = $a + $_; }; print "$a\n";\n'
+33819930
+I.e. 33MB wasted by pages drawn in from disc yet not fully accessed.
