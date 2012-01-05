@@ -6,6 +6,7 @@ files/devs using the scripts in there.
 
 ls:
 
+ls
 ls -ld
 ls -asg dir2 m*
 ls -lur . nonexistentfile
@@ -64,6 +65,7 @@ grep "affinity$" mbox
 
 grep "spa.*din[^z][a-z, ]*" mbox
 
+echo foo | grep oo
 
 
 # Commonly-used things in GNU-land:

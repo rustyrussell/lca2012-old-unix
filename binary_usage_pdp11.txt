@@ -7,68 +7,17 @@ Output from 'make pdp11 APOUT=/home/matt/Documents/LCA/2012/binsize/pdp11/apout2
 
 After running ls, cat and grep with various options:
 
- ls: Files 16, 4904 bytes, 4167 of which touched.  (84.97%)
- cat: Files 16, 136 bytes, 135 of which touched.  (99.26%)
- grep: Files 19, 2176 bytes, 1549 of which touched.  (71.19%)
+ ls: Files 7, 4904 bytes, 4170 of which touched.  (85.03%)
+ cat: Files 6, 136 bytes, 135 of which touched.  (99.26%)
+ grep: Files 8, 2176 bytes, 1559 of which touched.  (71.65%)
 
 
 Output from same, but pointed at ***V7*** UNIX tree:
 
 After running ls, cat and grep with various options:
 
- ls: Files 6, 8056 bytes, 5997 of which touched.  (74.44%)
+ ls: Files 7, 8056 bytes, 6000 of which touched.  (74.48%)
  cat: Files 6, 3736 bytes, 2114 of which touched.  (56.58%)
- grep: Files 7, 6088 bytes, 2538 of which touched.  (41.69%)
-
+ grep: Files 8, 6088 bytes, 2550 of which touched.  (41.89%)
 
 ---
-
-Old by-hand stuff:
-
-ls -ld
-[Total loaded from file = 4904 ; interesting accesses 2886 =  58.85%]
-ls -asg dir1 m*
-[Total loaded from file = 4904 ; interesting accesses 2233 =  45.53%]
-ls -lur . nonexistentfile
-[Total loaded from file = 4904 ; interesting accesses 3934 =  80.22%]
-ls -tui
-[Total loaded from file = 4904 ; interesting accesses 2385 =  48.63%]
-ls -f
-[Total loaded from file = 4904 ; interesting accesses 1668 =  34.01%]
-
--- Files 5, 4904 bytes, 4219 of which touched.  (86.03%)
-With unreadable & very old files (Jan 1969): 
-Files 11, 4904 bytes, 4311 of which touched.  (87.91%)	*******
-
-
-cat mbox
-[Total loaded from file = 136 ; interesting accesses 115 =  84.56%]
-cat nonexistentfile
-[Total loaded from file = 136 ; interesting accesses 45 =  33.09%]
-cat mbox make_devices.sh
-[Total loaded from file = 136 ; interesting accesses 129 =  94.85%]
-echo | cat mbox make_devices.sh -
-[Total loaded from file = 136 ; interesting accesses 135 =  99.26%]
-cat make_devices.sh - <&-
-[Total loaded from file = 136 ; interesting accesses 57 =  41.91%]
-
---- Files 6, 136 bytes, 135 of which touched.  (99.26%)  *******
-
-grep foo nonexistentfile
-[Total loaded from file = 2174 ; interesting accesses 726 =  33.39%]
-grep -vn nod make_devices.sh
-[Total loaded from file = 2174 ; interesting accesses 1068 =  49.13%]
-grep -c nod make_devices.sh
-[Total loaded from file = 2174 ; interesting accesses 1160 =  53.36%]
-
-# More interesting regexps:
-grep "thing.*thing[^f][abc]*$" mbox
-[Total loaded from file = 2174 ; interesting accesses 824 =  37.90%]
-
-grep "affinity$" mbox
-[Total loaded from file = 2174 ; interesting accesses 1051 =  48.34%]
-
-grep "spa.*din[^z][a-z, ]*" mbox
-[Total loaded from file = 2174 ; interesting accesses 1257 =  57.82%]
-
---- Files 11, 2176 bytes, 1549 of which touched.  (71.19%)  *******

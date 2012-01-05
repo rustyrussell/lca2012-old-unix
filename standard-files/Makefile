@@ -44,6 +44,7 @@ help:
 basetest:	ls cat grep
 
 ls:
+	$(INTERP) $(ROOT)/bin/ls	|| true
 	$(INTERP) $(ROOT)/bin/ls -ld	|| true
 	$(INTERP) $(ROOT)/bin/ls -asg dir2 m*    || true
 	$(INTERP) $(ROOT)/bin/ls -lur . nonexistentfile    || true
@@ -79,6 +80,7 @@ cat:
 
 grep:
 	$(INTERP) $(ROOT)$(GREPPATH)/grep foo nonexistentfile  || true
+	echo foo | $(INTERP) $(ROOT)$(GREPPATH)/grep oo  || true
 	$(INTERP) $(ROOT)$(GREPPATH)/grep -vn nod make_devices.sh  || true
 	$(INTERP) $(ROOT)$(GREPPATH)/grep -c nod make_devices.sh  || true
 	$(INTERP) $(ROOT)$(GREPPATH)/grep "thing.*thing[^f][abc]*$$" mbox  || true
