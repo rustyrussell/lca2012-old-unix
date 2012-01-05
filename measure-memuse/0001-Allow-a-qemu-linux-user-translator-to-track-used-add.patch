@@ -1,4 +1,4 @@
-From 0c352d9535d39d5c554b8abfa3645368a0fd6a13 Mon Sep 17 00:00:00 2001
+From 4726c2b96c0db484b36a3b415ad8e64a445ecd16 Mon Sep 17 00:00:00 2001
 From: Matt Evans <matt@ozlabs.org>
 Date: Fri, 21 Oct 2011 14:48:45 +1100
 Subject: [PATCH] Allow a qemu linux-user translator to track used address
@@ -15,14 +15,15 @@ statistics from the written-out bitmap logfiles.
  cpu-all.h             |   27 ++--
  cpu-exec.c            |    4 +
  exec.c                |    1 +
- linux-user/analyse.c  |  187 ++++++++++++++++++++++
+ linux-user/analyse.c  |  189 ++++++++++++++++++++++
+ linux-user/elfload.c  |    2 +-
  linux-user/main.c     |    2 +
  linux-user/mlog.c     |  417 +++++++++++++++++++++++++++++++++++++++++++++++++
  linux-user/mlog.h     |   19 +++
  linux-user/qemu.h     |    4 +
  linux-user/syscall.c  |    6 +
  tcg/i386/tcg-target.c |   66 ++++++++
- 11 files changed, 723 insertions(+), 12 deletions(-)
+ 12 files changed, 726 insertions(+), 13 deletions(-)
  create mode 100644 linux-user/analyse.c
  create mode 100644 linux-user/mlog.c
  create mode 100644 linux-user/mlog.h
@@ -146,10 +147,10 @@ index db9ff55..5a23964 100644
  
 diff --git a/linux-user/analyse.c b/linux-user/analyse.c
 new file mode 100644
-index 0000000..35147ab
+index 0000000..bafeda7
 --- /dev/null
 +++ b/linux-user/analyse.c
-@@ -0,0 +1,187 @@
+@@ -0,0 +1,189 @@
 +#include <sys/types.h>
 +#include <sys/stat.h>
 +#include <fcntl.h>
@@ -336,7 +337,22 @@ index 0000000..35147ab
 +
 +	printf("%d pages touched, avg. %.2f bytes per page, %d bytes unused.\n", pages,
 +	       (float)bytes_per_page/(float)pages, unused_page_bytes);
++
++	return 0;
 +}
+diff --git a/linux-user/elfload.c b/linux-user/elfload.c
+index 33d776d..cb491dd 100644
+--- a/linux-user/elfload.c
++++ b/linux-user/elfload.c
+@@ -927,7 +927,7 @@ static bool elf_check_ident(struct elfhdr *ehdr)
+    This has to wait until after bswapping the header.  */
+ static bool elf_check_ehdr(struct elfhdr *ehdr)
+ {
+-    return (elf_check_arch(ehdr->e_machine)
++	return 1 /* hack for asmutils */ || (elf_check_arch(ehdr->e_machine)
+             && ehdr->e_ehsize == sizeof(struct elfhdr)
+             && ehdr->e_phentsize == sizeof(struct elf_phdr)
+             && ehdr->e_shentsize == sizeof(struct elf_shdr)
 diff --git a/linux-user/main.c b/linux-user/main.c
 index dbba8be..836a916 100644
 --- a/linux-user/main.c
@@ -978,5 +994,5 @@ index bb19a95..9f7de63 100644
      case 0:
          tcg_out_modrm_offset(s, OPC_MOVB_EvGv + P_REXB_R, datalo, base, ofs);
 -- 
-1.7.5.4
+1.7.7.3
 
