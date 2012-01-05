@@ -7,6 +7,6 @@ INPUT=$2
 
 for i in `ls $INPUT/* | sed -e "s/......$//;" | sort | uniq` ;
 do
-    echo "\n--- $i"
+    echo "--- $i"
     $AN -q ${i}* 
 done
