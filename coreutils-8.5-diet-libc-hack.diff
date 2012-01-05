@@ -1,0 +1,132 @@
+--- ./lib/fflush.c~	2010-04-23 23:14:00.000000000 +0930
++++ ./lib/fflush.c	2012-01-05 20:17:49.699357303 +1030
+@@ -30,6 +30,7 @@
+ 
+ #undef fflush
+ 
++#if 0
+ 
+ #if defined _IO_ftrylockfile || __GNU_LIBRARY__ == 1 /* GNU libc, BeOS, Haiku, Linux libc5 */
+ 
+@@ -216,3 +217,10 @@
+   }
+ #endif
+ }
++#else
++int
++rpl_fflush (FILE *stream)
++{
++  fflush(stream);
++}
++#endif
+--- ./lib/freadseek.c~	2010-04-23 23:14:00.000000000 +0930
++++ ./lib/freadseek.c	2012-01-05 20:09:05.579344213 +1030
+@@ -27,6 +27,7 @@
+ 
+ #include "stdio-impl.h"
+ 
++#if 0
+ /* Increment the in-memory pointer.  INCREMENT must be at most the buffer size
+    returned by freadptr().
+    This is very cheap (no system calls).  */
+@@ -134,3 +135,4 @@
+     /* Encountered EOF.  */
+     return 0;
+ }
++#endif
+--- ./lib/stdint.h~	2012-01-05 20:20:42.791362130 +1030
++++ ./lib/stdint.h	2012-01-05 20:22:03.795364392 +1030
+@@ -483,7 +483,7 @@
+    <stdint.h> and assumes its types are already defined.  */
+ #if ! (defined WCHAR_MIN && defined WCHAR_MAX)
+ # define _GL_JUST_INCLUDE_SYSTEM_WCHAR_H
+-# include <wchar.h>
++//# include <wchar.h>
+ # undef _GL_JUST_INCLUDE_SYSTEM_WCHAR_H
+ #endif
+ #undef WCHAR_MIN
+--- ./lib/freadahead.c~	2010-04-23 23:14:00.000000000 +0930
++++ ./lib/freadahead.c	2012-01-05 20:08:40.535342286 +1030
+@@ -22,6 +22,7 @@
+ #include <stdlib.h>
+ #include "stdio-impl.h"
+ 
++#if 0
+ size_t
+ freadahead (FILE *fp)
+ {
+@@ -83,3 +84,4 @@
+  #error "Please port gnulib freadahead.c to your platform! Look at the definition of fflush, fread, ungetc on your system, then report this to bug-gnulib."
+ #endif
+ }
++#endif
+--- ./lib/freading.c~	2010-04-23 23:14:00.000000000 +0930
++++ ./lib/freading.c	2012-01-05 20:08:25.963341609 +1030
+@@ -21,6 +21,7 @@
+ 
+ #include "stdio-impl.h"
+ 
++#if 0
+ /* Don't use glibc's __freading function in glibc < 2.7, see
+    <http://sourceware.org/bugzilla/show_bug.cgi?id=4359>  */
+ #if !(HAVE___FREADING && (!defined __GLIBC__ || __GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 7)))
+@@ -60,5 +61,5 @@
+  #error "Please port gnulib freading.c to your platform!"
+ #endif
+ }
+-
++#endif
+ #endif
+--- ./lib/fseeko.c~	2010-04-22 03:41:48.000000000 +0930
++++ ./lib/fseeko.c	2012-01-05 20:11:04.995346015 +1030
+@@ -1,3 +1,4 @@
++#if 0
+ /* -*- buffer-read-only: t -*- vi: set ro: */
+ /* DO NOT EDIT! GENERATED AUTOMATICALLY! */
+ /* An fseeko() function that, together with fflush(), is POSIX compliant.
+@@ -146,3 +147,4 @@
+     }
+   return fseeko (fp, offset, whence);
+ }
++#endif
+--- ./lib/fseterr.c~	2010-04-23 23:14:00.000000000 +0930
++++ ./lib/fseterr.c	2012-01-05 20:14:02.983350982 +1030
+@@ -43,7 +43,7 @@
+   fp->_Mode |= 0x200 /* _MERR */;
+ #elif defined __MINT__              /* Atari FreeMiNT */
+   fp->__error = 1;
+-#elif 0                             /* unknown  */
++#elif 1                             /* unknown  */
+   /* Portable fallback, based on an idea by Rich Felker.
+      Wow! 6 system calls for something that is just a bit operation!
+      Not activated on any system, because there is no way to repair FP when
+--- ./lib/fpurge.c~	2010-04-23 23:14:00.000000000 +0930
++++ ./lib/fpurge.c	2012-01-05 20:09:34.119343488 +1030
+@@ -26,6 +26,7 @@
+ 
+ #include "stdio-impl.h"
+ 
++#if 0
+ int
+ fpurge (FILE *fp)
+ {
+@@ -135,3 +136,4 @@
+ 
+ #endif
+ }
++#endif
+--- ./lib/freadptr.c~	2010-04-23 23:14:00.000000000 +0930
++++ ./lib/freadptr.c	2012-01-05 20:08:52.167342447 +1030
+@@ -23,6 +23,7 @@
+ 
+ #include "stdio-impl.h"
+ 
++#if 0
+ const char *
+ freadptr (FILE *fp, size_t *sizep)
+ {
+@@ -101,3 +102,4 @@
+  #error "Please port gnulib freadptr.c to your platform! Look at the definition of fflush, fread, getc, getc_unlocked on your system, then report this to bug-gnulib."
+ #endif
+ }
++#endif

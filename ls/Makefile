@@ -16,6 +16,12 @@ speed-test: testdir ls-ported-forward gnu-ls-reduced
 	@cd testdir; unset LS_COLORS; echo `for i in \`seq 3\`; do /usr/bin/time -f %e /bin/ls -l 2>&1 > /dev/null; done`
 	@echo "GNU ls (LANG=C):"
 	@cd testdir; unset LS_COLORS; echo `for i in \`seq 3\`; do LANG=C /usr/bin/time -f %e /bin/ls 2>&1 > /dev/null; done`
+	@echo "GNU ls: (-Os)"
+	@cd testdir; unset LS_COLORS; echo `for i in \`seq 3\`; do /usr/bin/time -f %e ../../../coreutils-8.5/debian/coreutils/bin/ls 2>&1 > /dev/null; done`
+	@echo "GNU ls -l (-Os):"
+	@cd testdir; unset LS_COLORS; echo `for i in \`seq 3\`; do /usr/bin/time -f %e ../../../coreutils-8.5/debian/coreutils/bin/ls -l 2>&1 > /dev/null; done`
+	@echo "GNU ls (-Os) (LANG=C):"
+	@cd testdir; unset LS_COLORS; echo `for i in \`seq 3\`; do LANG=C /usr/bin/time -f %e ../../../coreutils-8.5/debian/coreutils/bin/ls 2>&1 > /dev/null; done`
 	@echo "Reduced GNU ls:"
 	@cd testdir; unset LS_COLORS; echo `for i in \`seq 3\`; do /usr/bin/time -f %e ../gnu-ls-reduced 2>&1 > /dev/null; done`
 	@echo "Reduced GNU ls -l:"
